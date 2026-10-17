@@ -4,7 +4,7 @@ import { requireUser, ROLE_LABEL } from "@/lib/auth";
 // Every page here reads the signed-in user, so all of them render live on each request.
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const navUser = { name: user.name, roleLabel: ROLE_LABEL[user.appRole], isAdmin: user.isAdmin };
+  const navUser = { name: user.name, roleLabel: ROLE_LABEL[user.appRole], isAdmin: user.isAdmin, isIpcs: user.ipcsIpIds.length > 0 };
   return (
     <div className="flex min-h-screen">
       <Sidebar user={navUser} />

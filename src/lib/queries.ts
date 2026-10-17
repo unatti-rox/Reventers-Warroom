@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { PersonRole, StatusState, type FestiveFormat } from "@/generated/prisma/enums";
-import { WEEKS, currentMonthKey, type WeekKey } from "@/lib/dates";
+import { WEEKS, currentMonthKey, currentWeekKey, type WeekKey } from "@/lib/dates";
 import { getOrCreateCycle, statusValue, effectiveAssignment } from "@/lib/rotation";
 import { summarize } from "@/lib/attendance";
 
@@ -64,6 +64,79 @@ export async function getCohortOverview(monthKey: string) {
       pct: target ? Math.min(100, Math.round((achieved / target) * 100)) : 0,
     };
   });
+}
+
+/** Each IP's delivery for the month, from the Brand × IP matrix. */
+export async function getIpOverview(monthKey: string) {
+  const [ips, cells] = await Promise.all([
+    prisma.ip.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    prisma.brandIpMonth.findMany({ where: { monthKey }, select: { ipId: true, target: true, achieved: true, live: true } }),
+  ]);
+  return ips.map((ip) => {
+    const mine = cells.filter((c) => c.ipId === ip.id);
+    const target = mine.reduce((s, c) => s + c.target, 0);
+    const achieved = mine.reduce((s, c) => s + c.achieved, 0);
+    const live = mine.reduce((s, c) => s + c.live, 0);
+    return {
+      id: ip.id,
+      name: ip.name,
+      target,
+      achieved,
+      live,
+      pct: target ? Math.min(100, Math.round((achieved / target) * 100)) : 0,
+    };
+  });
+}
+
+/** Cohorts actually assigned to an IP this week (net of trades). */
+async function getIpAssignedCohortIds(ipId: string, monthKey: string, week: WeekKey): Promise<Set<string>> {
+  const cycle = await getOrCreateCycle(monthKey);
+  const [entry, trades, cohorts] = await Promise.all([
+    prisma.rotationEntry.findUnique({ where: { cycleId_ipId_week: { cycleId: cycle.id, ipId, week } }, include: { assignments: true } }),
+    prisma.trade.findMany({ where: { cycleId: cycle.id, ipId, week } }),
+    prisma.cohort.findMany({ select: { id: true } }),
+  ]);
+  const base = entry?.assignments.map((a) => a.cohortId) ?? [];
+  const result = new Set<string>();
+  for (const cohort of cohorts) {
+    if (effectiveAssignment(ipId, week, cohort.id, base, trades)) result.add(cohort.id);
+  }
+  return result;
+}
+
+/**
+ * For one IP CS: their own IP(s), each with only the brands whose cohort is
+ * actually assigned to it this week (via the rotation, net of trades) — not
+ * every brand in the org. Keeps the day-to-day list short. Numbers entered
+ * still add to the IP's running monthly total (achieved/live are monthly).
+ */
+export async function getMyIpBrands(ipIds: string[], monthKey: string) {
+  if (ipIds.length === 0) return [];
+  const week = currentWeekKey();
+  const [ips, allBrands, cells] = await Promise.all([
+    prisma.ip.findMany({ where: { id: { in: ipIds } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    prisma.brand.findMany({ where: activeIn(monthKey), orderBy: { name: "asc" }, include: { cohort: true } }),
+    prisma.brandIpMonth.findMany({ where: { monthKey, ipId: { in: ipIds } } }),
+  ]);
+  return Promise.all(
+    ips.map(async (ip) => {
+      const cohortIds = await getIpAssignedCohortIds(ip.id, monthKey, week);
+      const brands = allBrands.filter((b) => cohortIds.has(b.cohortId));
+      return {
+        ip,
+        brands: brands.map((brand) => {
+          const cell = cells.find((c) => c.ipId === ip.id && c.brandId === brand.id);
+          return {
+            brandId: brand.id,
+            brandName: brand.name,
+            cohortCode: brand.cohort.code,
+            achieved: cell?.achieved ?? 0,
+            live: cell?.live ?? 0,
+          };
+        }),
+      };
+    }),
+  );
 }
 
 /** Every IP with who handles it. */

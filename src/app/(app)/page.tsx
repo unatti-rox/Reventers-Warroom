@@ -1,249 +1,144 @@
 import Link from "next/link";
-import { PageHeader, Card, CardHead, KpiTile, ProgressBar, Th, Td } from "@/components/ui";
-import { YearSwitcher } from "@/components/Switchers";
-import { getKpis, getCohortOverview, getIpTeams } from "@/lib/queries";
+import { redirect } from "next/navigation";
+import { PageHeader, Card, CardHead, ProgressBar } from "@/components/ui";
+import { getCohortOverview, getIpOverview } from "@/lib/queries";
 import { getYearSummary } from "@/lib/targets";
-import { currentMonthKey, monthKeyLabel, yearLabel, yearStartFor } from "@/lib/dates";
+import { currentMonthKey, monthKeyLabel, yearStartFor } from "@/lib/dates";
 import { requireUser } from "@/lib/auth";
 
-function fmt(n: number | null) {
-  return n === null ? "—" : n.toLocaleString("en-IN");
+function statusColor(pct: number): string {
+  if (pct >= 80) return "var(--status-good)";
+  if (pct >= 50) return "var(--status-warning)";
+  return "var(--status-critical)";
 }
 
-export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
+export default async function OverviewPage() {
   const user = await requireUser();
-  const params = await searchParams;
-  const monthKey = currentMonthKey();
-  const thisYear = yearStartFor(monthKey);
-  const requested = Number(params.year);
-  const startYear = Number.isInteger(requested) && requested > 2000 && requested < 2100 ? requested : thisYear;
+  if (!user.isAdmin && user.ipcsIpIds.length > 0) redirect("/update-status");
 
-  const [kpis, cohortOverview, teams, year] = await Promise.all([
-    getKpis(),
+  const monthKey = currentMonthKey();
+  const [cohorts, ips, year] = await Promise.all([
     getCohortOverview(monthKey),
-    getIpTeams(),
-    getYearSummary(startYear),
+    getIpOverview(monthKey),
+    getYearSummary(yearStartFor(monthKey)),
   ]);
-  const thisYearSummary = startYear === thisYear ? year : await getYearSummary(thisYear);
-  const years = Array.from(new Set([thisYear - 1, thisYear, thisYear + 1, startYear])).sort();
-  const currentRow = thisYearSummary.current;
+  const current = year.current;
+  const pct = current && current.target ? Math.min(100, Math.round((current.achieved / current.target) * 100)) : 0;
+
+  const needsAttention = [
+    ...cohorts.map((c) => ({ label: c.code, sub: c.leaderName, pct: c.pct, href: `/matrix?cohort=${c.code}` })),
+    ...ips.map((ip) => ({ label: ip.name, sub: "IP", pct: ip.pct, href: `/matrix?ip=${ip.id}` })),
+  ]
+    .sort((a, b) => a.pct - b.pct)
+    .slice(0, 5);
 
   return (
     <div>
-      <PageHeader
-        title="IP Production Command Center"
-        subtitle="Cohort Leader → Brand → IP CS → IP → Designer → Editor → Output"
-        right={<YearSwitcher years={years} current={startYear} />}
-      />
+      <PageHeader title="Overview" subtitle="Everything that's done this month, at a glance" />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 mb-5">
-        <KpiTile label="Cohorts" value={kpis.cohorts} meta="Cohort leaders" />
-        <KpiTile label="Brands" value={kpis.brands} meta="Across all cohorts" />
-        <KpiTile label="IPs" value={kpis.ips} meta="Content formats" />
-        <KpiTile label="Yearly target" value={fmt(thisYearSummary.totals.base)} meta={`IP base, ${yearLabel(thisYear)}`} />
-        <KpiTile
-          label="Monthly target"
-          value={fmt(currentRow?.target ?? null)}
-          meta={currentRow ? `${monthKeyLabel(monthKey, "short")} · incl. ${fmt(currentRow.backlogIn ?? 0)} backlog` : undefined}
-        />
-        <KpiTile label="IP CS" value={kpis.ipcs} meta="Allocation team" />
-        <KpiTile label="Designers" value={kpis.designers} meta="IP designers" />
-        <KpiTile label="Editors" value={kpis.editors} meta={`+ ${kpis.floaters} floaters (Festive & Non-IP)`} />
-      </div>
+      <Card className="p-6 mb-5">
+        <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+          {monthKeyLabel(monthKey, "long")} · IP output vs. target
+        </div>
+        <div className="flex items-end gap-3 mt-2">
+          <div className="text-[48px] font-extrabold tabular-nums leading-none" style={{ color: statusColor(pct) }}>
+            {pct}%
+          </div>
+          <div className="text-[13px] pb-2" style={{ color: "var(--text-muted)" }}>
+            {current ? `${current.achieved} of ${current.target} (incl. ${current.backlogIn ?? 0} backlog)` : "—"}
+          </div>
+        </div>
+        <div className="mt-4">
+          <ProgressBar pct={pct} color={statusColor(pct)} />
+        </div>
+        <div className="text-[10.5px] mt-2" style={{ color: "var(--text-muted)" }}>
+          Target = monthly base + any shortfall carried from earlier months. Full year-by-year breakdown is on{" "}
+          <Link href="/admin?tab=targets" className="underline">
+            Admin → Targets
+          </Link>
+          .
+        </div>
+      </Card>
 
       <Card className="mb-5">
-        <CardHead
-          title={`Yearly delivery · ${yearLabel(startYear)}`}
-          subtitle="IP target = monthly base + any shortfall carried from earlier months (a surplus doesn't lower it). Festive and Non-IP are tracked separately and aren't part of the IP target."
-        />
-        <div className="overflow-auto">
-          <table className="w-full border-collapse" style={{ minWidth: 1100 }}>
-            <thead>
-              <tr>
-                <Th />
-                <Th align="center" className="border-l">
-                  <span style={{ color: "var(--brand-ink)" }}>IP output</span>
-                </Th>
-                <Th />
-                <Th />
-                <Th />
-                <Th />
-                <Th />
-                <Th align="center" className="border-l">
-                  Festive
-                </Th>
-                <Th />
-                <Th />
-                <Th align="center" className="border-l">
-                  Non-IP
-                </Th>
-                <Th />
-                <Th />
-                <Th align="right" className="border-l">
-                  All delivery
-                </Th>
-              </tr>
-              <tr>
-                <Th>Month</Th>
-                <Th align="right" className="border-l">Base</Th>
-                <Th align="right">Backlog in</Th>
-                <Th align="right">Target</Th>
-                <Th align="right">Achieved</Th>
-                <Th align="right">Gap</Th>
-                <Th align="right">Live</Th>
-                <Th align="right" className="border-l">Target</Th>
-                <Th align="right">Achieved</Th>
-                <Th align="right">Live</Th>
-                <Th align="right" className="border-l">Target</Th>
-                <Th align="right">Achieved</Th>
-                <Th align="right">Live</Th>
-                <Th align="right" className="border-l">Achieved</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {year.rows.map((r) => {
-                const behind = r.timing === "past" && (r.gap ?? 0) > 0;
-                const bg = r.timing === "current" ? "var(--brand-soft)" : behind ? "var(--status-critical-bg)" : undefined;
-                return (
-                  <tr key={r.monthKey} style={{ background: bg }}>
-                    <Td className="font-bold whitespace-nowrap">
-                      {monthKeyLabel(r.monthKey, "short")}
-                      {r.timing === "current" && (
-                        <span className="ml-1.5 text-[9px] font-bold uppercase" style={{ color: "var(--brand-ink)" }}>
-                          now
-                        </span>
-                      )}
-                    </Td>
-                    <Td align="right" className="tabular-nums border-l" style={{ color: "var(--text-secondary)" }}>
-                      {fmt(r.base)}
-                      {r.baseIsOverride ? " *" : r.newBrands ? ` (+${r.newBrands} br.)` : ""}
-                    </Td>
-                    <Td align="right" className="tabular-nums">{r.backlogIn === null ? "—" : fmt(r.backlogIn)}</Td>
-                    <Td align="right" className="tabular-nums font-bold">{r.timing === "future" && r.backlogIn === null ? `${fmt(r.base)}+` : fmt(r.target)}</Td>
-                    <Td align="right" className="tabular-nums font-bold">
-                      {r.timing === "future" ? "—" : fmt(r.achieved)}
-                      {r.achievedIsOverride ? " *" : ""}
-                    </Td>
-                    <Td
-                      align="right"
-                      className="tabular-nums font-bold"
-                      style={{ color: r.gap === null ? undefined : r.gap > 0 ? "var(--status-critical)" : "var(--status-good)" }}
-                    >
-                      {r.gap === null ? "—" : r.gap > 0 ? `−${fmt(r.gap)}` : r.gap < 0 ? `+${fmt(-r.gap)}` : "0"}
-                    </Td>
-                    <Td align="right" className="tabular-nums">{r.timing === "future" ? "—" : fmt(r.ipLive)}</Td>
-                    <Td align="right" className="tabular-nums border-l">{fmt(r.festive.target)}</Td>
-                    <Td align="right" className="tabular-nums">{fmt(r.festive.achieved)}</Td>
-                    <Td align="right" className="tabular-nums">{fmt(r.festive.live)}</Td>
-                    <Td align="right" className="tabular-nums border-l">{fmt(r.nonIp.target)}</Td>
-                    <Td align="right" className="tabular-nums">{fmt(r.nonIp.achieved)}</Td>
-                    <Td align="right" className="tabular-nums">{fmt(r.nonIp.live)}</Td>
-                    <Td align="right" className="tabular-nums font-bold border-l">
-                      {r.timing === "future" ? "—" : fmt(r.achieved + r.festive.achieved + r.nonIp.achieved)}
-                    </Td>
-                  </tr>
-                );
-              })}
-              <tr style={{ background: "var(--surface-tint)" }}>
-                <Td className="font-extrabold">Year</Td>
-                <Td align="right" className="tabular-nums font-bold border-l">{fmt(year.totals.base)}</Td>
-                <Td />
-                <Td />
-                <Td align="right" className="tabular-nums font-extrabold">{fmt(year.totals.achieved)}</Td>
-                <Td />
-                <Td align="right" className="tabular-nums font-bold">{fmt(year.totals.ipLive)}</Td>
-                <Td align="right" className="tabular-nums font-bold border-l">{fmt(year.totals.festive.target)}</Td>
-                <Td align="right" className="tabular-nums font-bold">{fmt(year.totals.festive.achieved)}</Td>
-                <Td align="right" className="tabular-nums font-bold">{fmt(year.totals.festive.live)}</Td>
-                <Td align="right" className="tabular-nums font-bold border-l">{fmt(year.totals.nonIp.target)}</Td>
-                <Td align="right" className="tabular-nums font-bold">{fmt(year.totals.nonIp.achieved)}</Td>
-                <Td align="right" className="tabular-nums font-bold">{fmt(year.totals.nonIp.live)}</Td>
-                <Td align="right" className="tabular-nums font-extrabold border-l">
-                  {fmt(year.totals.achieved + year.totals.festive.achieved + year.totals.nonIp.achieved)}
-                </Td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div className="px-5 py-3 text-[10px] border-t flex flex-wrap gap-x-5 gap-y-1" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
-          <span>
-            Base = {fmt(year.settings.baseMonthly)} a month + {year.settings.perBrand} per brand added after launch. Achieved = the Brand × IP Matrix.
-          </span>
-          <span>* set by an admin</span>
-          <span>
-            <span className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1" style={{ background: "var(--status-critical-bg)" }} />
-            behind target
-          </span>
-          {user.isAdmin && (
-            <Link href="/admin?tab=targets" className="underline" style={{ color: "var(--brand-ink)" }}>
-              Edit targets or past months
+        <CardHead title="Needs attention" subtitle="The 5 lowest-completion cohorts and IPs this month" />
+        <div>
+          {needsAttention.map((item, i) => (
+            <Link
+              key={`${item.label}-${i}`}
+              href={item.href}
+              className="flex items-center justify-between gap-3 px-5 py-3 border-b last:border-0"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: statusColor(item.pct) }} />
+                <div>
+                  <div className="text-[12px] font-bold">{item.label}</div>
+                  <div className="text-[9.5px]" style={{ color: "var(--text-muted)" }}>
+                    {item.sub}
+                  </div>
+                </div>
+              </div>
+              <div className="text-[13px] font-extrabold tabular-nums" style={{ color: statusColor(item.pct) }}>
+                {item.pct}%
+              </div>
             </Link>
+          ))}
+          {needsAttention.length === 0 && (
+            <div className="text-[11px] py-6 text-center" style={{ color: "var(--text-muted)" }}>
+              Nothing to flag yet this month.
+            </div>
           )}
         </div>
       </Card>
 
-      <Card className="mb-5">
-        <CardHead title="Cohort Overview" subtitle={`Cohort leader = person responsible for the cohort · IP delivery for ${monthKeyLabel(monthKey)}, from the Brand × IP Matrix`} />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-4">
-          {cohortOverview.map((c) => (
-            <Link
-              key={c.id}
-              href={`/matrix?cohort=${c.code}`}
-              className="rounded-xl border p-3.5 block transition-colors hover:border-[var(--brand-ink)]"
-              style={{ borderColor: "var(--border)" }}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="text-[12px] font-bold">
-                    {c.code} · {c.leaderName}
-                  </div>
-                  <div className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-                    {c.brandCount} brands
-                  </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <Card>
+          <CardHead title="By cohort" subtitle="Cohort Leader = person responsible for the cohort" />
+          <div>
+            {cohorts.map((c) => (
+              <Link
+                key={c.id}
+                href={`/matrix?cohort=${c.code}`}
+                className="flex items-center gap-3 px-5 py-3 border-b last:border-0"
+                style={{ borderColor: "var(--border)" }}
+              >
+                <span className="text-[11px] font-bold w-7 shrink-0">{c.code}</span>
+                <div className="flex-1 min-w-0">
+                  <ProgressBar pct={c.pct} color={statusColor(c.pct)} />
                 </div>
-                <div className="text-[13px] font-extrabold tabular-nums">{c.pct}%</div>
-              </div>
-              <div className="mt-2.5">
-                <ProgressBar pct={c.pct} />
-              </div>
-              <div className="flex justify-between text-[9.5px] mt-1.5" style={{ color: "var(--text-muted)" }}>
-                <span>
-                  {c.achieved} achieved · {c.live} live
-                </span>
-                <span>{c.target} target</span>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </Card>
+                <span className="text-[11px] font-bold tabular-nums w-10 text-right shrink-0">{c.pct}%</span>
+              </Link>
+            ))}
+          </div>
+        </Card>
 
-      <Card>
-        <CardHead title="Who handles which IP" subtitle="IP CS · Designer · Editors" />
-        <div className="overflow-auto">
-          <table className="w-full border-collapse" style={{ minWidth: 760 }}>
-            <thead>
-              <tr>
-                <Th>IP</Th>
-                <Th>IP CS</Th>
-                <Th>Designer</Th>
-                <Th>Editors</Th>
-                <Th align="right">Weekly target</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {teams.map((t) => (
-                <tr key={t.id}>
-                  <Td className="font-bold">{t.name}</Td>
-                  <Td>{t.ipcs.join(" + ") || "—"}</Td>
-                  <Td>{t.designers.join(" / ") || "Cohort designers"}</Td>
-                  <Td>{t.editors.join(", ") || "—"}</Td>
-                  <Td align="right" className="tabular-nums">{t.weeklyTarget}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+        <Card>
+          <CardHead title="By IP" subtitle="Content format completion across all brands" />
+          <div>
+            {ips.map((ip) => (
+              <Link
+                key={ip.id}
+                href={`/matrix?ip=${ip.id}`}
+                className="flex items-center gap-3 px-5 py-3 border-b last:border-0"
+                style={{ borderColor: "var(--border)" }}
+              >
+                <span className="text-[11px] font-bold flex-1 min-w-0 truncate pr-2">{ip.name}</span>
+                <div className="w-[90px] shrink-0">
+                  <ProgressBar pct={ip.pct} color={statusColor(ip.pct)} />
+                </div>
+                <span className="text-[11px] font-bold tabular-nums w-10 text-right shrink-0">{ip.pct}%</span>
+              </Link>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <div className="mt-6 text-center">
+        <Link href="/matrix" className="text-[11px] underline" style={{ color: "var(--text-muted)" }}>
+          Open advanced tools (matrix, rotation, festive, trends) →
+        </Link>
+      </div>
     </div>
   );
 }

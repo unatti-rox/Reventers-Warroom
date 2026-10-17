@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/actions";
 
 const NAV = [
-  { href: "/", label: "Dashboard" },
+  { href: "/", label: "Overview" },
   { href: "/matrix", label: "Brand × IP Matrix" },
   { href: "/rotation", label: "Weekly Rotation" },
   { href: "/festive", label: "Festive & Non-IP" },
@@ -15,12 +15,14 @@ const NAV = [
   { href: "/trends", label: "Trends" },
 ];
 
+const UPDATE_STATUS_NAV = { href: "/update-status", label: "Update Status" };
 const ADMIN_NAV = { href: "/admin", label: "Admin" };
 
-type NavUser = { name: string; roleLabel: string; isAdmin: boolean };
+type NavUser = { name: string; roleLabel: string; isAdmin: boolean; isIpcs: boolean };
 
 function items(user: NavUser) {
-  return user.isAdmin ? [...NAV, ADMIN_NAV] : NAV;
+  const list = user.isIpcs ? [NAV[0], UPDATE_STATUS_NAV, ...NAV.slice(1)] : NAV;
+  return user.isAdmin ? [...list, ADMIN_NAV] : list;
 }
 
 function isActive(pathname: string, href: string) {

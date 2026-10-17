@@ -29,6 +29,15 @@ export function currentMonthKey(): string {
   return todayDateStr().slice(0, 7);
 }
 
+/** W1 = days 1-7, W2 = 8-14, W3 = 15-21, W4 = 22 to month end (see Weekly Rotation). */
+export function currentWeekKey(): WeekKey {
+  const day = Number(todayDateStr().slice(8, 10));
+  if (day <= 7) return "W1";
+  if (day <= 14) return "W2";
+  if (day <= 21) return "W3";
+  return "W4";
+}
+
 export function monthKeyFromDateStr(dateStr: string): string {
   return dateStr.slice(0, 7);
 }
