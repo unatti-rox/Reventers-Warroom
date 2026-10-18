@@ -56,18 +56,35 @@ export default async function MatrixPage({
         Month total: <b>{totalAchieved}</b> achieved / <b>{totalTarget}</b> target · <b>{totalLive}</b> live
       </div>
 
-      {visibleCohorts.map((cohort) =>
-        cohort.brands.length === 0 ? null : (
+      {visibleCohorts.map((cohort) => {
+        if (cohort.brands.length === 0) return null;
+        let cohortAchieved = 0;
+        let cohortTarget = 0;
+        for (const brand of cohort.brands) {
+          for (const ip of visibleIps) {
+            const cell = cellMap.get(`${brand.id}:${ip.id}`);
+            if (cell) {
+              cohortAchieved += cell.achieved;
+              cohortTarget += cell.target;
+            }
+          }
+        }
+        return (
           <div key={cohort.id} className="mb-6">
-            <h2 className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
-              {cohort.code} · {cohort.leaderName}
-            </h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+                {cohort.code} · {cohort.leaderName}
+              </h2>
+              <span className="text-[11px] font-bold tabular-nums" style={{ color: "var(--text-secondary)" }}>
+                Total: {cohortAchieved} / {cohortTarget}
+              </span>
+            </div>
             {cohort.brands.map((brand) => (
               <BrandTargetCard key={brand.id} monthKey={monthKey} brandId={brand.id} brandName={brand.name} ips={visibleIps} cellMap={cellMap} />
             ))}
           </div>
-        ),
-      )}
+        );
+      })}
       {visibleCohorts.every((c) => c.brands.length === 0) && <EmptyNote>No matching brands</EmptyNote>}
     </div>
   );
