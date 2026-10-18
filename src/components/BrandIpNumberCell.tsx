@@ -14,7 +14,7 @@ export function BrandIpNumberCell({
   monthKey: string;
   brandId: string;
   ipId: string;
-  field: "achieved" | "live";
+  field: "target" | "achieved" | "live";
   value: number;
   label: string;
 }) {

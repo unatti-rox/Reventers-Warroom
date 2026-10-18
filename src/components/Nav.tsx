@@ -6,7 +6,6 @@ import { signOut } from "@/lib/actions";
 
 const NAV = [
   { href: "/", label: "Overview" },
-  { href: "/matrix", label: "Brand × IP Matrix" },
   { href: "/rotation", label: "Weekly Rotation" },
   { href: "/festive", label: "Festive & Non-IP" },
   { href: "/cohort-progress", label: "Cohort Progress" },
@@ -16,13 +15,20 @@ const NAV = [
 ];
 
 const UPDATE_STATUS_NAV = { href: "/update-status", label: "Update Status" };
+const MY_BRANDS_NAV = { href: "/my-brands", label: "My Brands" };
+const MATRIX_NAV = { href: "/matrix", label: "Brand × IP Matrix" };
 const ADMIN_NAV = { href: "/admin", label: "Admin" };
 
-type NavUser = { name: string; roleLabel: string; isAdmin: boolean; isIpcs: boolean };
+type NavUser = { name: string; roleLabel: string; isAdmin: boolean; isIpcs: boolean; isCohortLeader: boolean };
 
 function items(user: NavUser) {
-  const list = user.isIpcs ? [NAV[0], UPDATE_STATUS_NAV, ...NAV.slice(1)] : NAV;
-  return user.isAdmin ? [...list, ADMIN_NAV] : list;
+  const list = [NAV[0]];
+  if (user.isIpcs) list.push(UPDATE_STATUS_NAV);
+  if (user.isCohortLeader) list.push(MY_BRANDS_NAV);
+  if (user.isAdmin) list.push(MATRIX_NAV);
+  list.push(...NAV.slice(1));
+  if (user.isAdmin) list.push(ADMIN_NAV);
+  return list;
 }
 
 function isActive(pathname: string, href: string) {

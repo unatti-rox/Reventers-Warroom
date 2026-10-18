@@ -197,6 +197,26 @@ export async function getIpTeams() {
   });
 }
 
+/** A cohort leader's own brands (across cohorts they lead), for the simple "My Brands" page. */
+export async function getMyTargetBrands(cohortIds: string[], monthKey: string) {
+  if (cohortIds.length === 0) return { brands: [], ips: [], cellMap: new Map<string, { target: number; achieved: number; live: number }>() };
+  const [cohorts, ips, cells] = await Promise.all([
+    prisma.cohort.findMany({
+      where: { id: { in: cohortIds } },
+      orderBy: { code: "asc" },
+      include: { brands: { where: activeIn(monthKey), orderBy: { name: "asc" } } },
+    }),
+    prisma.ip.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    prisma.brandIpMonth.findMany({
+      where: { monthKey, brand: { cohortId: { in: cohortIds } } },
+      select: { brandId: true, ipId: true, target: true, achieved: true, live: true },
+    }),
+  ]);
+  const brands = cohorts.flatMap((c) => c.brands.map((b) => ({ id: b.id, name: b.name, cohortCode: c.code })));
+  const cellMap = new Map(cells.map((c) => [`${c.brandId}:${c.ipId}`, c]));
+  return { brands, ips, cellMap, multiCohort: cohorts.length > 1 };
+}
+
 export async function getMatrix(monthKey: string) {
   const [cohorts, ips, cells] = await Promise.all([
     getCohorts(monthKey),

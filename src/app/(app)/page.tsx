@@ -15,6 +15,7 @@ function statusColor(pct: number): string {
 export default async function OverviewPage() {
   const user = await requireUser();
   if (!user.isAdmin && user.ipcsIpIds.length > 0) redirect("/update-status");
+  if (!user.isAdmin && user.cohortIds.length > 0) redirect("/my-brands");
 
   const monthKey = currentMonthKey();
   const [cohorts, ips, year, extras] = await Promise.all([
