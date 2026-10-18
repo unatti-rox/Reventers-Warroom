@@ -71,17 +71,15 @@ export default async function MatrixPage({
         }
         return (
           <div key={cohort.id} className="mb-6">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-                {cohort.code} · {cohort.leaderName}
-              </h2>
-              <span className="text-[11px] font-bold tabular-nums" style={{ color: "var(--text-secondary)" }}>
-                Total: {cohortAchieved} / {cohortTarget}
-              </span>
-            </div>
+            <h2 className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
+              {cohort.code} · {cohort.leaderName}
+            </h2>
             {cohort.brands.map((brand) => (
               <BrandTargetCard key={brand.id} monthKey={monthKey} brandId={brand.id} brandName={brand.name} ips={visibleIps} cellMap={cellMap} />
             ))}
+            <div className="flex items-center justify-end px-5 py-2 text-[11px] font-bold tabular-nums" style={{ color: "var(--text-secondary)" }}>
+              {cohort.code} total: {cohortAchieved} / {cohortTarget}
+            </div>
           </div>
         );
       })}
