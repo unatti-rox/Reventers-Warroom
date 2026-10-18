@@ -68,6 +68,7 @@ async function main() {
   await applyCohortRealignment();
   await applyTeamChanges();
   await applyShradhaRestoration();
+  await applyShradhaCorrection();
 }
 
 /**
@@ -276,6 +277,26 @@ async function applyShradhaRestoration() {
 
   await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
   console.log("Shradha restored as C9 (Oct 2026).");
+}
+
+/**
+ * Correction to the restoration above: Shradha's actual portfolio is 7
+ * brands, not 8 - Nexsa was included by mistake and goes back to archived.
+ * Also fills in her full name for C9's display. Runs once (tracked by its
+ * own marker).
+ */
+async function applyShradhaCorrection() {
+  const key = "shradha-correction.2026-10";
+  if (await prisma.appSetting.findUnique({ where: { key } })) return;
+
+  const c9 = await prisma.cohort.findUniqueOrThrow({ where: { code: "C9" } });
+  await prisma.cohort.update({ where: { id: c9.id }, data: { leaderName: "Shradha Patani" } });
+
+  const nexsa = await prisma.brand.findFirstOrThrow({ where: { name: { equals: "Nexsa", mode: "insensitive" } } });
+  await prisma.brand.update({ where: { id: nexsa.id }, data: { archivedMonthKey: currentMonthKey() } });
+
+  await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
+  console.log("Shradha correction (Oct 2026) applied.");
 }
 
 async function loadLaunchData() {
