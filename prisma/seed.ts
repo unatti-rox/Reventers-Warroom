@@ -66,6 +66,7 @@ async function main() {
   }
   await applyAccountSetup();
   await applyCohortRealignment();
+  await applyTeamChanges();
 }
 
 /**
@@ -198,6 +199,52 @@ async function applyCohortRealignment() {
 
   await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
   console.log("Cohort realignment (Oct 2026) applied.");
+}
+
+/**
+ * One-time team change (Oct 2026): Adarsh (IP CS) and Sameer (editor) are
+ * off the team. Rishika moves off Photoshoot Model and AI Walkthrough |
+ * Explainer (now Muskaan alone) onto Connectivity & Infrastructure, taking
+ * Adarsh's spot there. Aditya Bhosle replaces Sameer as that IP's editor.
+ * Runs once (tracked by its own marker).
+ */
+async function applyTeamChanges() {
+  const key = "team-changes.2026-10";
+  if (await prisma.appSetting.findUnique({ where: { key } })) return;
+
+  const connectivity = await prisma.ip.findUniqueOrThrow({ where: { name: "Connectivity & Infrastructure" } });
+  const photoshoot = await prisma.ip.findUniqueOrThrow({ where: { name: "Photoshoot Model" } });
+  const aiWalkthrough = await prisma.ip.findUniqueOrThrow({ where: { name: "AI Walkthrough | Explainer" } });
+
+  const rishika = await prisma.person.findUniqueOrThrow({ where: { name: "Rishika" } });
+  const adarsh = await prisma.person.findUniqueOrThrow({ where: { name: "Adarsh" } });
+  const sameer = await prisma.person.findUniqueOrThrow({ where: { name: "Sameer" } });
+
+  // Rishika: off Photoshoot Model and AI Walkthrough, onto Connectivity & Infrastructure.
+  await prisma.personAssignment.deleteMany({ where: { personId: rishika.id, ipId: photoshoot.id, role: "IP_CS" } });
+  await prisma.personAssignment.deleteMany({ where: { personId: rishika.id, ipId: aiWalkthrough.id, role: "IP_CS" } });
+  await prisma.personAssignment.upsert({
+    where: { personId_ipId_role: { personId: rishika.id, ipId: connectivity.id, role: "IP_CS" } },
+    update: {},
+    create: { personId: rishika.id, ipId: connectivity.id, role: "IP_CS" },
+  });
+
+  // Adarsh and Sameer are off the team.
+  await prisma.personAssignment.deleteMany({ where: { personId: adarsh.id, ipId: connectivity.id, role: "IP_CS" } });
+  await prisma.personAssignment.deleteMany({ where: { personId: sameer.id, ipId: connectivity.id, role: "EDITOR" } });
+  await prisma.person.update({ where: { id: adarsh.id }, data: { active: false } });
+  await prisma.person.update({ where: { id: sameer.id }, data: { active: false } });
+
+  // Aditya Bhosle replaces Sameer as editor.
+  const aditya = await person("Aditya Bhosle", "EDITOR");
+  await prisma.personAssignment.upsert({
+    where: { personId_ipId_role: { personId: aditya.id, ipId: connectivity.id, role: "EDITOR" } },
+    update: {},
+    create: { personId: aditya.id, ipId: connectivity.id, role: "EDITOR" },
+  });
+
+  await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
+  console.log("Team changes (Oct 2026) applied.");
 }
 
 async function loadLaunchData() {
