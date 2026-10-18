@@ -67,6 +67,7 @@ async function main() {
   await applyAccountSetup();
   await applyCohortRealignment();
   await applyTeamChanges();
+  await applyShradhaRestoration();
 }
 
 /**
@@ -245,6 +246,36 @@ async function applyTeamChanges() {
 
   await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
   console.log("Team changes (Oct 2026) applied.");
+}
+
+/**
+ * Shradha is back. The cohort realignment above gave her old C3 to Parin
+ * Mehta (keeping Aakshya, per the Oct 2026 portfolio list), so Shradha gets
+ * a fresh cohort (C9) with the rest of her old brands restored from
+ * archive. Like C8, C9 starts with no weekly rotation slot - an admin has
+ * to assign it. Runs once (tracked by its own marker).
+ */
+async function applyShradhaRestoration() {
+  const key = "shradha-restoration.2026-10";
+  if (await prisma.appSetting.findUnique({ where: { key } })) return;
+
+  const shradha = await prisma.person.findUniqueOrThrow({ where: { name: "Shradha" } });
+  await prisma.person.update({ where: { id: shradha.id }, data: { active: true } });
+
+  const c9 = await prisma.cohort.upsert({
+    where: { code: "C9" },
+    update: {},
+    create: { code: "C9", leaderName: "Shradha", leaderPersonId: shradha.id },
+  });
+
+  const brandNames = ["Fortune Primero", "Viera", "IMB", "Nexsa", "Perspective", "GHP", "TRL", "Ramsons Trendsquares"];
+  for (const name of brandNames) {
+    const brand = await prisma.brand.findFirstOrThrow({ where: { name: { equals: name, mode: "insensitive" } } });
+    await prisma.brand.update({ where: { id: brand.id }, data: { cohortId: c9.id, archivedMonthKey: null } });
+  }
+
+  await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
+  console.log("Shradha restored as C9 (Oct 2026).");
 }
 
 async function loadLaunchData() {
