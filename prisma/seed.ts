@@ -70,6 +70,7 @@ async function main() {
   await applyShradhaRestoration();
   await applyShradhaCorrection();
   await applyShradhaRotationSlot();
+  await deleteDiscontinuedBrands();
 }
 
 /**
@@ -332,6 +333,28 @@ async function applyShradhaRotationSlot() {
 
   await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
   console.log("Shradha paired with Aasawari in the weekly rotation (Oct 2026).");
+}
+
+/**
+ * These 4 clients discontinued and had already been archived (hidden from
+ * the Matrix, Overview and Festive pages, but still listed in Admin). Per
+ * instruction, removed outright instead - deleting a Brand cascades to its
+ * BrandIpMonth and PlannedEntry rows, which were empty anyway (no real
+ * numbers had been entered for these yet). Runs once (tracked by its own
+ * marker).
+ */
+async function deleteDiscontinuedBrands() {
+  const key = "delete-discontinued-brands.2026-10";
+  if (await prisma.appSetting.findUnique({ where: { key } })) return;
+
+  const names = ["RnY", "GVP", "Trendsquares WOG", "Nexsa"];
+  for (const name of names) {
+    const brand = await prisma.brand.findFirst({ where: { name: { equals: name, mode: "insensitive" } } });
+    if (brand) await prisma.brand.delete({ where: { id: brand.id } });
+  }
+
+  await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
+  console.log("Discontinued brands deleted (Oct 2026).");
 }
 
 async function loadLaunchData() {
