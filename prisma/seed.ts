@@ -72,6 +72,7 @@ async function main() {
   await applyShradhaRotationSlot();
   await deleteDiscontinuedBrands();
   await removeEditorsAndDesigners();
+  await restoreEditorsAndDesigners();
 }
 
 /**
@@ -374,6 +375,51 @@ async function removeEditorsAndDesigners() {
 
   await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
   console.log("Editors and designers removed from the system (Oct 2026).");
+}
+
+/**
+ * Undoes removeEditorsAndDesigners() above: that was a misreading of the
+ * "no access" instruction - IP CS, designers and editors all need to keep
+ * existing so Attendance can track them; only Cohort Leaders are excluded
+ * there. Recreates every designer/editor and their IP assignments from
+ * ipSeed, then re-applies the Sameer -> Aditya Bhosle swap from
+ * applyTeamChanges() on top, since that's still the correct current state.
+ * Runs once (tracked by its own marker).
+ */
+async function restoreEditorsAndDesigners() {
+  const key = "restore-editors-designers.2026-10";
+  if (await prisma.appSetting.findUnique({ where: { key } })) return;
+
+  for (const ip of ipSeed) {
+    const record = await prisma.ip.findUniqueOrThrow({ where: { name: ip.name } });
+    const roles = [
+      ...ip.designers.map((name) => ({ name, role: "DESIGNER" as const })),
+      ...ip.editors.map((name) => ({ name, role: "EDITOR" as const })),
+    ];
+    for (const r of roles) {
+      const p = await person(r.name, r.role);
+      await prisma.personAssignment.upsert({
+        where: { personId_ipId_role: { personId: p.id, ipId: record.id, role: r.role } },
+        update: {},
+        create: { personId: p.id, ipId: record.id, role: r.role },
+      });
+    }
+  }
+
+  const connectivity = await prisma.ip.findUniqueOrThrow({ where: { name: "Connectivity & Infrastructure" } });
+  const sameer = await prisma.person.findUniqueOrThrow({ where: { name: "Sameer" } });
+  await prisma.personAssignment.deleteMany({ where: { personId: sameer.id, ipId: connectivity.id, role: "EDITOR" } });
+  await prisma.person.update({ where: { id: sameer.id }, data: { active: false } });
+
+  const aditya = await person("Aditya Bhosle", "EDITOR");
+  await prisma.personAssignment.upsert({
+    where: { personId_ipId_role: { personId: aditya.id, ipId: connectivity.id, role: "EDITOR" } },
+    update: {},
+    create: { personId: aditya.id, ipId: connectivity.id, role: "EDITOR" },
+  });
+
+  await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
+  console.log("Editors and designers restored (Oct 2026).");
 }
 
 async function loadLaunchData() {
