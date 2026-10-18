@@ -69,6 +69,7 @@ async function main() {
   await applyTeamChanges();
   await applyShradhaRestoration();
   await applyShradhaCorrection();
+  await applyShradhaRotationSlot();
 }
 
 /**
@@ -297,6 +298,40 @@ async function applyShradhaCorrection() {
 
   await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
   console.log("Shradha correction (Oct 2026) applied.");
+}
+
+/**
+ * C9 (Shradha) is brand new, so it never appears in any week's rotation
+ * yet. Per instruction, she's paired with C1 (Aasawari) wherever Aasawari
+ * is assigned: adds a RotationAssignment for C9 on every entry in this
+ * month's cycle that already has C1. Future months clone this cycle's
+ * assignments forward (see getOrCreateCycle), so the pairing persists
+ * automatically. Runs once (tracked by its own marker).
+ */
+async function applyShradhaRotationSlot() {
+  const key = "shradha-rotation-slot.2026-10";
+  if (await prisma.appSetting.findUnique({ where: { key } })) return;
+
+  const c1 = await prisma.cohort.findUniqueOrThrow({ where: { code: "C1" } });
+  const c9 = await prisma.cohort.findUniqueOrThrow({ where: { code: "C9" } });
+  const monthKey = currentMonthKey();
+
+  const cycle = await prisma.rotationCycle.findUnique({
+    where: { monthKey },
+    include: { entries: { include: { assignments: true } } },
+  });
+  if (cycle) {
+    for (const entry of cycle.entries) {
+      const hasC1 = entry.assignments.some((a) => a.cohortId === c1.id);
+      const hasC9 = entry.assignments.some((a) => a.cohortId === c9.id);
+      if (hasC1 && !hasC9) {
+        await prisma.rotationAssignment.create({ data: { entryId: entry.id, cohortId: c9.id } });
+      }
+    }
+  }
+
+  await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
+  console.log("Shradha paired with Aasawari in the weekly rotation (Oct 2026).");
 }
 
 async function loadLaunchData() {
