@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { PageHeader, Card, CardHead, ProgressBar } from "@/components/ui";
-import { getCohortOverview, getIpOverview } from "@/lib/queries";
+import { PageHeader, Card, CardHead, ProgressBar, KpiTile } from "@/components/ui";
+import { getCohortOverview, getIpOverview, getOverviewExtras } from "@/lib/queries";
 import { getYearSummary } from "@/lib/targets";
 import { currentMonthKey, monthKeyLabel, yearStartFor } from "@/lib/dates";
 import { requireUser } from "@/lib/auth";
@@ -17,10 +17,11 @@ export default async function OverviewPage() {
   if (!user.isAdmin && user.ipcsIpIds.length > 0) redirect("/update-status");
 
   const monthKey = currentMonthKey();
-  const [cohorts, ips, year] = await Promise.all([
+  const [cohorts, ips, year, extras] = await Promise.all([
     getCohortOverview(monthKey),
     getIpOverview(monthKey),
     getYearSummary(yearStartFor(monthKey)),
+    getOverviewExtras(monthKey),
   ]);
   const current = year.current;
   const pct = current && current.target ? Math.min(100, Math.round((current.achieved / current.target) * 100)) : 0;
@@ -59,6 +60,22 @@ export default async function OverviewPage() {
           .
         </div>
       </Card>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <Link href="/rotation">
+          <KpiTile label="Weekly Rotation" value={extras.week} meta={`${extras.assignedCohortCount} of ${extras.totalCohortCount} cohorts on duty this week`} />
+        </Link>
+        <Link href="/festive">
+          <KpiTile
+            label="Festive & Non-IP"
+            value={`${extras.festiveNonIpDone}/${extras.festiveNonIpTotal}`}
+            meta={extras.festiveNonIpTotal ? "entries done this month" : "nothing logged this month"}
+          />
+        </Link>
+        <Link href="/trades">
+          <KpiTile label="Trade-off Log" value={extras.tradeCount} meta={`cohort trade${extras.tradeCount === 1 ? "" : "s"} this month`} />
+        </Link>
+      </div>
 
       <Card className="mb-5">
         <CardHead title="Needs attention" subtitle="The 5 lowest-completion cohorts and IPs this month" />

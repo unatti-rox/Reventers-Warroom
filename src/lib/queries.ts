@@ -88,6 +88,44 @@ export async function getIpOverview(monthKey: string) {
   });
 }
 
+/** Simple counts for the admin Overview snapshot: one number per other section. */
+export async function getOverviewExtras(monthKey: string) {
+  const week = currentWeekKey();
+  const cycle = await getOrCreateCycle(monthKey);
+  const [cohorts, entries, weekTrades, allTrades, festive, nonIp] = await Promise.all([
+    prisma.cohort.findMany({ select: { id: true } }),
+    prisma.rotationEntry.findMany({ where: { cycleId: cycle.id, week }, include: { assignments: true } }),
+    prisma.trade.findMany({ where: { cycleId: cycle.id, week } }),
+    prisma.trade.count({ where: { cycleId: cycle.id } }),
+    prisma.festiveEntry.findMany({ where: { monthKey }, select: { achieved: true, target: true } }),
+    prisma.nonIpEntry.findMany({ where: { monthKey }, select: { achieved: true, target: true } }),
+  ]);
+
+  const assignedCohortCount = cohorts.filter((cohort) =>
+    entries.some((entry) =>
+      effectiveAssignment(
+        entry.ipId,
+        week,
+        cohort.id,
+        entry.assignments.map((a) => a.cohortId),
+        weekTrades,
+      ),
+    ),
+  ).length;
+
+  const festiveNonIp = [...festive, ...nonIp];
+  const festiveNonIpDone = festiveNonIp.filter((e) => e.target > 0 && e.achieved >= e.target).length;
+
+  return {
+    week,
+    assignedCohortCount,
+    totalCohortCount: cohorts.length,
+    tradeCount: allTrades,
+    festiveNonIpDone,
+    festiveNonIpTotal: festiveNonIp.length,
+  };
+}
+
 /** Cohorts actually assigned to an IP this week (net of trades). */
 async function getIpAssignedCohortIds(ipId: string, monthKey: string, week: WeekKey): Promise<Set<string>> {
   const cycle = await getOrCreateCycle(monthKey);
