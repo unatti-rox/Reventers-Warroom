@@ -70,7 +70,7 @@ export default async function OverviewPage() {
           <KpiTile
             label="Festive & Non-IP"
             value={`${extras.festiveNonIpDone}/${extras.festiveNonIpTotal}`}
-            meta={extras.festiveNonIpTotal ? "entries done this month" : "nothing logged this month"}
+            meta={extras.festiveNonIpTotal ? "entries live this month" : "nothing logged this month"}
           />
         </Link>
         <Link href="/trades">

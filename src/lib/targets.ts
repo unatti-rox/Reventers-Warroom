@@ -26,8 +26,8 @@ export type YearRow = {
   achievedIsOverride: boolean;
   /** Target minus achieved (past and current months). */
   gap: number | null;
-  festive: { target: number; achieved: number; live: number };
-  nonIp: { target: number; achieved: number; live: number };
+  festive: { achieved: number; live: number };
+  nonIp: { achieved: number; live: number };
   ipLive: number;
 };
 
@@ -55,15 +55,15 @@ export async function getYearSummary(startYear: number) {
       where: { monthKey: { gte: first, lte: last } },
       _sum: { achieved: true, live: true },
     }),
-    prisma.festiveEntry.groupBy({
+    prisma.plannedEntry.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last } },
-      _sum: { target: true, achieved: true, live: true },
+      where: { monthKey: { gte: first, lte: last }, kind: "FESTIVAL" },
+      _sum: { achieved: true, live: true },
     }),
-    prisma.nonIpEntry.groupBy({
+    prisma.plannedEntry.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last } },
-      _sum: { target: true, achieved: true, live: true },
+      where: { monthKey: { gte: first, lte: last }, kind: "NON_IP" },
+      _sum: { achieved: true, live: true },
     }),
   ]);
 
@@ -95,8 +95,8 @@ export async function getYearSummary(startYear: number) {
       achieved,
       achievedIsOverride: setting?.achievedOverride != null,
       gap: timing === "future" ? null : target - achieved,
-      festive: { target: f?.target ?? 0, achieved: f?.achieved ?? 0, live: f?.live ?? 0 },
-      nonIp: { target: n?.target ?? 0, achieved: n?.achieved ?? 0, live: n?.live ?? 0 },
+      festive: { achieved: f?.achieved ?? 0, live: f?.live ?? 0 },
+      nonIp: { achieved: n?.achieved ?? 0, live: n?.live ?? 0 },
       ipLive: m?._sum.live ?? 0,
     });
 
@@ -116,12 +116,10 @@ export async function getYearSummary(startYear: number) {
     ipLive: rows.reduce((s, r) => s + r.ipLive, 0),
     baseToDate: toDate.reduce((s, r) => s + r.base, 0),
     festive: {
-      target: rows.reduce((s, r) => s + r.festive.target, 0),
       achieved: rows.reduce((s, r) => s + r.festive.achieved, 0),
       live: rows.reduce((s, r) => s + r.festive.live, 0),
     },
     nonIp: {
-      target: rows.reduce((s, r) => s + r.nonIp.target, 0),
       achieved: rows.reduce((s, r) => s + r.nonIp.achieved, 0),
       live: rows.reduce((s, r) => s + r.nonIp.live, 0),
     },

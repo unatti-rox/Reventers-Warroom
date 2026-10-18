@@ -39,10 +39,16 @@ enum Week {
   W4
 }
 
-enum FestiveFormat {
-  STATIC
+enum PlanKind {
+  FESTIVAL
+  NON_IP
+}
+
+enum PlanFormat {
   STORY
   REEL
+  AV
+  GIF
 }
 
 model Cohort {
@@ -71,10 +77,9 @@ model Brand {
   /// Month from which the brand no longer counts (null = active).
   archivedMonthKey String?
 
-  cohort       Cohort         @relation(fields: [cohortId], references: [id], onDelete: Cascade)
-  ipMonths     BrandIpMonth[]
-  festiveItems FestiveEntry[]
-  nonIpItems   NonIpEntry[]
+  cohort         Cohort         @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  ipMonths       BrandIpMonth[]
+  plannedEntries PlannedEntry[]
 
   @@unique([cohortId, name])
   @@map("Client")
@@ -171,37 +176,28 @@ model Festival {
   sortOrder Int     @default(0)
   active    Boolean @default(true)
 
-  entries FestiveEntry[]
+  entries PlannedEntry[]
 }
 
-model FestiveEntry {
-  id         String        @id @default(cuid())
+/// One piece of planned work outside the IP matrix: either a brand's work for
+/// a festival (festivalId set), or a one-off non-IP item (workLabel set, e.g.
+/// "Teaser reel"). One row per piece of content (a Story, a Reel, an AV, a
+/// GIF) — a brand can log several rows against the same festival or the same
+/// non-IP work.
+model PlannedEntry {
+  id         String     @id @default(cuid())
   monthKey   String
   brandId    String
-  festivalId String
-  format     FestiveFormat
-  target     Int           @default(0)
-  achieved   Int           @default(0)
-  live       Int           @default(0)
+  kind       PlanKind
+  festivalId String?
+  workLabel  String?
+  format     PlanFormat
+  achieved   Int        @default(0)
+  live       Int        @default(0)
 
-  brand    Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  festival Festival @relation(fields: [festivalId], references: [id], onDelete: Cascade)
+  brand    Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  festival Festival? @relation(fields: [festivalId], references: [id], onDelete: Cascade)
 
-  @@unique([monthKey, brandId, festivalId, format])
-  @@index([monthKey])
-}
-
-model NonIpEntry {
-  id       String @id @default(cuid())
-  monthKey String
-  brandId  String
-  target   Int    @default(0)
-  achieved Int    @default(0)
-  live     Int    @default(0)
-
-  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
-
-  @@unique([monthKey, brandId])
   @@index([monthKey])
 }
 

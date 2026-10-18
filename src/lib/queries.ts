@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { PersonRole, StatusState, type FestiveFormat } from "@/generated/prisma/enums";
+import { PersonRole, StatusState } from "@/generated/prisma/enums";
 import { WEEKS, currentMonthKey, currentWeekKey, type WeekKey } from "@/lib/dates";
 import { getOrCreateCycle, statusValue, effectiveAssignment } from "@/lib/rotation";
 import { summarize } from "@/lib/attendance";
@@ -92,13 +92,12 @@ export async function getIpOverview(monthKey: string) {
 export async function getOverviewExtras(monthKey: string) {
   const week = currentWeekKey();
   const cycle = await getOrCreateCycle(monthKey);
-  const [cohorts, entries, weekTrades, allTrades, festive, nonIp] = await Promise.all([
+  const [cohorts, entries, weekTrades, allTrades, planned] = await Promise.all([
     prisma.cohort.findMany({ select: { id: true } }),
     prisma.rotationEntry.findMany({ where: { cycleId: cycle.id, week }, include: { assignments: true } }),
     prisma.trade.findMany({ where: { cycleId: cycle.id, week } }),
     prisma.trade.count({ where: { cycleId: cycle.id } }),
-    prisma.festiveEntry.findMany({ where: { monthKey }, select: { achieved: true, target: true } }),
-    prisma.nonIpEntry.findMany({ where: { monthKey }, select: { achieved: true, target: true } }),
+    prisma.plannedEntry.findMany({ where: { monthKey }, select: { live: true } }),
   ]);
 
   const assignedCohortCount = cohorts.filter((cohort) =>
@@ -113,8 +112,7 @@ export async function getOverviewExtras(monthKey: string) {
     ),
   ).length;
 
-  const festiveNonIp = [...festive, ...nonIp];
-  const festiveNonIpDone = festiveNonIp.filter((e) => e.target > 0 && e.achieved >= e.target).length;
+  const festiveNonIpDone = planned.filter((e) => e.live > 0).length;
 
   return {
     week,
@@ -122,7 +120,7 @@ export async function getOverviewExtras(monthKey: string) {
     totalCohortCount: cohorts.length,
     tradeCount: allTrades,
     festiveNonIpDone,
-    festiveNonIpTotal: festiveNonIp.length,
+    festiveNonIpTotal: planned.length,
   };
 }
 
@@ -348,55 +346,30 @@ export async function getFestivals(includeInactive = false) {
   });
 }
 
-export async function getFestiveView(monthKey: string) {
-  const [cohorts, festivals, festive, nonIp] = await Promise.all([
+/** One table of planned work: each row is either a brand's festival or a one-off non-IP item. */
+export async function getPlannedView(monthKey: string) {
+  const [cohorts, festivals, entries] = await Promise.all([
     getCohorts(monthKey),
     getFestivals(),
-    prisma.festiveEntry.findMany({ where: { monthKey }, include: { festival: true } }),
-    prisma.nonIpEntry.findMany({ where: { monthKey } }),
+    prisma.plannedEntry.findMany({ where: { monthKey }, include: { festival: true } }),
   ]);
 
-  // Group festive rows as brand + festival, with one cell per format.
-  type Cell = { target: number; achieved: number; live: number };
-  const groups = new Map<string, { brandId: string; festivalId: string; festivalName: string; dateLabel: string; month: number; formats: Partial<Record<FestiveFormat, Cell>> }>();
-  for (const e of festive) {
-    const key = `${e.brandId}:${e.festivalId}`;
-    if (!groups.has(key)) {
-      groups.set(key, {
-        brandId: e.brandId,
-        festivalId: e.festivalId,
-        festivalName: e.festival.name,
-        dateLabel: e.festival.dateLabel,
-        month: e.festival.month,
-        formats: {},
-      });
-    }
-    groups.get(key)!.formats[e.format] = { target: e.target, achieved: e.achieved, live: e.live };
-  }
+  const rows = entries.map((e) => ({
+    id: e.id,
+    brandId: e.brandId,
+    kind: e.kind,
+    festivalId: e.festivalId,
+    detail: e.kind === "FESTIVAL" ? (e.festival?.name ?? "") : (e.workLabel ?? ""),
+    dateLabel: e.festival?.dateLabel ?? null,
+    format: e.format,
+    achieved: e.achieved,
+    live: e.live,
+  }));
 
-  const byFormat = { STATIC: { target: 0, achieved: 0, live: 0 }, STORY: { target: 0, achieved: 0, live: 0 }, REEL: { target: 0, achieved: 0, live: 0 } };
-  const byFestival = new Map<string, { name: string; dateLabel: string; STATIC: number; STORY: number; REEL: number }>();
-  for (const e of festive) {
-    byFormat[e.format].target += e.target;
-    byFormat[e.format].achieved += e.achieved;
-    byFormat[e.format].live += e.live;
-    if (!byFestival.has(e.festivalId)) byFestival.set(e.festivalId, { name: e.festival.name, dateLabel: e.festival.dateLabel, STATIC: 0, STORY: 0, REEL: 0 });
-    byFestival.get(e.festivalId)![e.format] += e.target;
-  }
-  const nonIpTotal = nonIp.reduce(
-    (s, n) => ({ target: s.target + n.target, achieved: s.achieved + n.achieved, live: s.live + n.live }),
-    { target: 0, achieved: 0, live: 0 },
-  );
+  const sumBy = (kind: "FESTIVAL" | "NON_IP") =>
+    rows.filter((r) => r.kind === kind).reduce((s, r) => ({ achieved: s.achieved + r.achieved, live: s.live + r.live }), { achieved: 0, live: 0 });
 
-  return {
-    cohorts,
-    festivals,
-    festiveGroups: Array.from(groups.values()),
-    nonIpByBrand: new Map(nonIp.map((n) => [n.brandId, n])),
-    byFormat,
-    byFestival: Array.from(byFestival.values()),
-    nonIpTotal,
-  };
+  return { cohorts, festivals, rows, festiveTotal: sumBy("FESTIVAL"), nonIpTotal: sumBy("NON_IP") };
 }
 
 /* ---------------- ATTENDANCE ---------------- */

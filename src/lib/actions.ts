@@ -7,7 +7,7 @@ import { actionAdmin, actionUser, createSession, destroySession, getCurrentUser,
 import { hashPassword, temporaryPassword, verifyPassword } from "@/lib/password";
 import { getOrCreateCycle } from "@/lib/rotation";
 import { WEEKS, addDays, currentMonthKey, istDateTime, todayDateStr, type WeekKey } from "@/lib/dates";
-import { AppRole, FestiveFormat, PersonRole, StatusState } from "@/generated/prisma/enums";
+import { AppRole, PersonRole, PlanFormat, PlanKind, StatusState } from "@/generated/prisma/enums";
 
 /** Actions return a message instead of throwing: production builds hide thrown error text. */
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -226,62 +226,41 @@ export async function cycleCohortWeeklyStatus(monthKey: string, cohortId: string
 
 /* ---------------- FESTIVE & NON-IP ---------------- */
 
-export async function addFestiveRow(monthKey: string, brandId: string, festivalId: string) {
+/** Add one piece of planned work: `detail` is a festival id for FESTIVAL, or a free-text label (e.g. "Teaser reel") for NON_IP. */
+export async function addPlannedEntry(monthKey: string, brandId: string, kind: PlanKind, detail: string, format: PlanFormat) {
   return run(async () => {
     const user = await actionUser();
     checkMonth(monthKey);
     await assertLeadsBrand(user, brandId);
-    if (!(await prisma.festival.findUnique({ where: { id: festivalId } }))) refuse("Pick a festival.");
-    for (const format of Object.values(FestiveFormat)) {
-      await prisma.festiveEntry.upsert({
-        where: { monthKey_brandId_festivalId_format: { monthKey, brandId, festivalId, format } },
-        update: {},
-        create: { monthKey, brandId, festivalId, format },
-      });
+    if (kind === "FESTIVAL") {
+      if (!(await prisma.festival.findUnique({ where: { id: detail } }))) refuse("Pick a festival.");
+      await prisma.plannedEntry.create({ data: { monthKey, brandId, kind, festivalId: detail, format } });
+    } else {
+      const workLabel = text(detail, "the non-IP work");
+      await prisma.plannedEntry.create({ data: { monthKey, brandId, kind, workLabel, format } });
     }
   });
 }
 
-export async function removeFestiveRow(monthKey: string, brandId: string, festivalId: string) {
+export async function removePlannedEntry(entryId: string) {
   return run(async () => {
     const user = await actionUser();
-    await assertLeadsBrand(user, brandId);
-    await prisma.festiveEntry.deleteMany({ where: { monthKey, brandId, festivalId } });
+    const entry = await prisma.plannedEntry.findUnique({ where: { id: entryId } });
+    if (!entry) return;
+    await assertLeadsBrand(user, entry.brandId);
+    await prisma.plannedEntry.delete({ where: { id: entryId } });
   });
 }
 
-export async function setFestiveValue(
-  monthKey: string,
-  brandId: string,
-  festivalId: string,
-  format: FestiveFormat,
-  field: "target" | "achieved" | "live",
-  value: number,
-) {
+export async function setPlannedValue(entryId: string, field: "achieved" | "live", value: number) {
   return run(async () => {
     const user = await actionUser();
-    checkMonth(monthKey);
-    await assertLeadsBrand(user, brandId);
+    const entry = await prisma.plannedEntry.findUnique({ where: { id: entryId } });
+    if (!entry) refuse("That row is already gone.");
+    checkMonth(entry.monthKey);
+    await assertLeadsBrand(user, entry.brandId);
     const v = count(value);
-    await prisma.festiveEntry.upsert({
-      where: { monthKey_brandId_festivalId_format: { monthKey, brandId, festivalId, format } },
-      update: { [field]: v },
-      create: { monthKey, brandId, festivalId, format, [field]: v },
-    });
-  });
-}
-
-export async function setNonIpValue(monthKey: string, brandId: string, field: "target" | "achieved" | "live", value: number) {
-  return run(async () => {
-    const user = await actionUser();
-    checkMonth(monthKey);
-    await assertLeadsBrand(user, brandId);
-    const v = count(value);
-    await prisma.nonIpEntry.upsert({
-      where: { monthKey_brandId: { monthKey, brandId } },
-      update: { [field]: v },
-      create: { monthKey, brandId, [field]: v },
-    });
+    await prisma.plannedEntry.update({ where: { id: entryId }, data: { [field]: v } });
   });
 }
 
