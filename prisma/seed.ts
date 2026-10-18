@@ -71,6 +71,7 @@ async function main() {
   await applyShradhaCorrection();
   await applyShradhaRotationSlot();
   await deleteDiscontinuedBrands();
+  await removeEditorsAndDesigners();
 }
 
 /**
@@ -355,6 +356,24 @@ async function deleteDiscontinuedBrands() {
 
   await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
   console.log("Discontinued brands deleted (Oct 2026).");
+}
+
+/**
+ * Only admins, cohort leaders and IP CS should exist as people in the app.
+ * Deletes every Designer and Editor outright (cascades to their IP team
+ * assignments and attendance history) - not deactivated, per instruction.
+ * Floaters are left alone: they're a separate role used for Festive &
+ * Non-IP work, not named in the instruction. Runs once (tracked by its own
+ * marker).
+ */
+async function removeEditorsAndDesigners() {
+  const key = "remove-editors-designers.2026-10";
+  if (await prisma.appSetting.findUnique({ where: { key } })) return;
+
+  await prisma.person.deleteMany({ where: { appRole: { in: ["DESIGNER", "EDITOR"] } } });
+
+  await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
+  console.log("Editors and designers removed from the system (Oct 2026).");
 }
 
 async function loadLaunchData() {
