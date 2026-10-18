@@ -65,6 +65,7 @@ async function main() {
     await loadLaunchData();
   }
   await applyAccountSetup();
+  await applyCohortRealignment();
 }
 
 /**
@@ -90,6 +91,113 @@ async function applyAccountSetup() {
   }
   await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
   console.log("Admin logins set up.");
+}
+
+/**
+ * One-time portfolio realignment (Oct 2026): Pooja and Shradha are off the
+ * team, C8 is new (Ishika & Unnati's own cohort), and client portfolios
+ * moved around. Runs once (tracked by its own marker). Rotation assignments
+ * are untouched: they're keyed by cohortId, and C1-C7 keep their ids, so
+ * each cohort's existing weekly IP slot carries over automatically under
+ * its new leader. C8 is new and starts with no weekly rotation slot — an
+ * admin has to assign it on the Weekly Rotation page.
+ *
+ * Existing leaders keep their Person record (and login) unchanged; only
+ * Cohort.leaderName (a display string, decoupled from Person.name here) is
+ * updated to their full name, so nobody's sign-in name changes underneath
+ * them.
+ */
+async function applyCohortRealignment() {
+  const key = "cohort-realignment.2026-10";
+  if (await prisma.appSetting.findUnique({ where: { key } })) return;
+
+  async function findBrand(name: string) {
+    const b = await prisma.brand.findFirst({ where: { name: { equals: name, mode: "insensitive" } } });
+    if (!b) throw new Error(`Cohort realignment: brand not found: ${name}`);
+    return b;
+  }
+  const cohortByCode = (code: string) => prisma.cohort.findUniqueOrThrow({ where: { code } });
+
+  const monthKey = currentMonthKey();
+
+  // Fix casing to match the current portfolio list.
+  const savvyGreens = await findBrand("Savvy greens");
+  await prisma.brand.update({ where: { id: savvyGreens.id }, data: { name: "Savvy Greens" } });
+
+  // New cohort leaders.
+  const abhishek = await person("Abhishek Gosavi", "COHORT_LEADER");
+  const parin = await person("Parin Mehta", "COHORT_LEADER");
+
+  // Leadership handoffs and display-name updates for cohorts that keep their id.
+  const c1 = await cohortByCode("C1");
+  await prisma.cohort.update({ where: { id: c1.id }, data: { leaderName: "Aasawari Dalvi" } });
+  const c2 = await cohortByCode("C2");
+  await prisma.cohort.update({ where: { id: c2.id }, data: { leaderName: "Abhishek Gosavi", leaderPersonId: abhishek.id } });
+  const c3 = await cohortByCode("C3");
+  await prisma.cohort.update({ where: { id: c3.id }, data: { leaderName: "Parin Mehta", leaderPersonId: parin.id } });
+  const c4 = await cohortByCode("C4");
+  await prisma.cohort.update({ where: { id: c4.id }, data: { leaderName: "Shilpa Chawla" } });
+  const c5 = await cohortByCode("C5");
+  await prisma.cohort.update({ where: { id: c5.id }, data: { leaderName: "Harsh Devani" } });
+  const c7 = await cohortByCode("C7");
+  await prisma.cohort.update({ where: { id: c7.id }, data: { leaderName: "Yoshita Dhandhay" } });
+  // C6 (Karan Sharma) is unchanged.
+
+  // New cohort for the admins' own portfolio. Both are already admins (full
+  // access everywhere), so no single leaderPersonId is set here.
+  const c8 = await prisma.cohort.upsert({
+    where: { code: "C8" },
+    update: {},
+    create: { code: "C8", leaderName: "Ishika & Unatti" },
+  });
+
+  // Brands that moved to a different cohort.
+  const moves: [string, string][] = [
+    ["Hiranandani", "C8"],
+    ["Regalia", "C8"],
+    ["Raymond", "C8"],
+    ["Sajay", "C5"],
+    ["Divyashree", "C3"],
+    ["Vaibhavlaxmi", "C3"],
+    ["Sibermond", "C3"],
+  ];
+  for (const [brandName, code] of moves) {
+    const brand = await findBrand(brandName);
+    const cohort = await cohortByCode(code);
+    await prisma.brand.update({ where: { id: brand.id }, data: { cohortId: cohort.id } });
+  }
+
+  // Brand-new clients.
+  await prisma.brand.create({ data: { name: "Vaayu", cohortId: c8.id, addedMonthKey: monthKey } });
+  await prisma.brand.create({ data: { name: "Dharti", cohortId: c5.id, addedMonthKey: monthKey } });
+
+  // Clients no longer on any cohort leader's portfolio.
+  const archivedBrands = [
+    "RnY",
+    "Fortune Primero",
+    "Viera",
+    "IMB",
+    "Nexsa",
+    "Perspective",
+    "GHP",
+    "TRL",
+    "Ramsons Trendsquares",
+    "Trendsquares WOG",
+    "GVP",
+  ];
+  for (const name of archivedBrands) {
+    const brand = await findBrand(name);
+    await prisma.brand.update({ where: { id: brand.id }, data: { archivedMonthKey: monthKey } });
+  }
+
+  // Off the team.
+  for (const name of ["Pooja", "Shradha"]) {
+    const p = await prisma.person.findUnique({ where: { name } });
+    if (p) await prisma.person.update({ where: { id: p.id }, data: { active: false } });
+  }
+
+  await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
+  console.log("Cohort realignment (Oct 2026) applied.");
 }
 
 async function loadLaunchData() {
