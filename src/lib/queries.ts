@@ -386,10 +386,10 @@ export async function getOpenDay(personId: string) {
   return prisma.attendanceDay.findFirst({ where: { personId, clockOut: null }, orderBy: { day: "desc" } });
 }
 
-/** Everyone except admins, with their month summary (admin view). */
+/** IP CS, designers and editors, with their month summary (admin view). Excludes cohort leaders and admins. */
 export async function getAttendanceOverview(monthKey: string) {
   const [people, days] = await Promise.all([
-    prisma.person.findMany({ where: { active: true, appRole: { not: "ADMIN" } }, orderBy: [{ appRole: "asc" }, { name: "asc" }] }),
+    prisma.person.findMany({ where: { active: true, appRole: { in: ["IP_CS", "DESIGNER", "EDITOR"] } }, orderBy: [{ appRole: "asc" }, { name: "asc" }] }),
     prisma.attendanceDay.findMany({ where: { day: { startsWith: monthKey } } }),
   ]);
   return people.map((p) => ({ person: p, summary: summarize(monthKey, days.filter((d) => d.personId === p.id)) }));

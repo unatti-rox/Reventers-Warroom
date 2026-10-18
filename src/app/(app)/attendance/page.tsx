@@ -99,7 +99,7 @@ async function AdminAttendance({ monthKey, months }: { monthKey: string; months:
         right={<MonthSwitcher monthKeys={months} current={monthKey} />}
       />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <KpiTile label="People tracked" value={overview.length} meta="Everyone except admins" />
+        <KpiTile label="People tracked" value={overview.length} meta="IP CS, designers, editors" />
         <KpiTile label="Average absence" value={`${avg}%`} meta={monthKeyLabel(monthKey)} />
         <KpiTile label="No clock-out" value={overview.reduce((s, o) => s + o.summary.missingOut, 0)} meta="Days to fix" />
         <KpiTile label="Highest-absence IP" value={worst && worst.absenceRate > 0 ? `${worst.absenceRate}%` : "—"} meta={worst && worst.absenceRate > 0 ? worst.ip.name : "No absences yet"} />
