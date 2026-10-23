@@ -14,6 +14,7 @@ import {
   saveMonthSetting,
   saveTargetSettings,
   setBrandArchived,
+  setCohortIps,
   setCohortLeader,
   updateBrand,
   updateFestival,
@@ -359,20 +360,52 @@ export function AddIpMemberForm({ ipId, people }: { ipId: string; people: Option
 
 export function AddIpForm() {
   const [name, setName] = useState("");
-  const [target, setTarget] = useState("4");
   const [pending, go] = useAction();
   return (
     <form
       className="flex flex-wrap items-center gap-2"
       onSubmit={(e) => {
         e.preventDefault();
-        go(() => addIp(name, Number(target)), () => setName(""));
+        go(() => addIp(name), () => setName(""));
       }}
     >
       <input value={name} onChange={(e) => setName(e.target.value)} placeholder="New IP name" className={`${control} w-56`} style={inputStyle} aria-label="IP name" />
-      <input type="number" min={0} value={target} onChange={(e) => setTarget(e.target.value)} className={`${control} w-20`} style={inputStyle} aria-label="Weekly target" />
       <Button pending={pending}>+ Add IP</Button>
     </form>
+  );
+}
+
+/** Sets a cohort's fixed IPs (checkboxes), replacing weekly rotation. */
+export function CohortIpsForm({ cohortId, allIps, selected }: { cohortId: string; allIps: Option[]; selected: string[] }) {
+  const [picked, setPicked] = useState<string[]>(selected);
+  const [pending, go] = useAction();
+  const dirty = picked.length !== selected.length || picked.some((id) => !selected.includes(id));
+  return (
+    <div className="flex flex-wrap items-center gap-2 mt-1.5">
+      {allIps.map((ip) => {
+        const on = picked.includes(ip.id);
+        return (
+          <button
+            key={ip.id}
+            type="button"
+            onClick={() => setPicked((p) => (on ? p.filter((id) => id !== ip.id) : [...p, ip.id]))}
+            className="text-[10.5px] font-semibold rounded-full px-2.5 py-1 border"
+            style={{
+              borderColor: on ? "var(--brand-ink)" : "var(--border)",
+              background: on ? "var(--brand-ink)" : "transparent",
+              color: on ? "#fff" : "var(--text-secondary)",
+            }}
+          >
+            {ip.label}
+          </button>
+        );
+      })}
+      {dirty && (
+        <Button type="button" pending={pending} onClick={() => go(() => setCohortIps(cohortId, picked))}>
+          Save IPs
+        </Button>
+      )}
+    </div>
   );
 }
 

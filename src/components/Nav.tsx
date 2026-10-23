@@ -4,28 +4,17 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/actions";
 
-const NAV = [
-  { href: "/", label: "Overview" },
-  { href: "/rotation", label: "Weekly Rotation" },
-  { href: "/festive", label: "Festive & Non-IP" },
-  { href: "/cohort-progress", label: "Cohort Progress" },
-  { href: "/trades", label: "Trade-off Log" },
-  { href: "/shoot-schedule", label: "Shoot Schedule" },
-];
-
-const UPDATE_STATUS_NAV = { href: "/update-status", label: "Update Status" };
-const MY_BRANDS_NAV = { href: "/my-brands", label: "My Brands" };
-const MATRIX_NAV = { href: "/matrix", label: "Brand × IP Matrix" };
+const DASHBOARD_NAV = { href: "/", label: "Dashboard" };
+const LOG_IT_NAV = { href: "/log", label: "Log it" };
+const SHOOT_SCHEDULE_NAV = { href: "/shoot-schedule", label: "Shoot Schedule" };
 const ADMIN_NAV = { href: "/admin", label: "Admin" };
 
 type NavUser = { name: string; roleLabel: string; isAdmin: boolean; isIpcs: boolean; isCohortLeader: boolean };
 
 function items(user: NavUser) {
-  const list = [NAV[0]];
-  if (user.isIpcs) list.push(UPDATE_STATUS_NAV);
-  if (user.isCohortLeader) list.push(MY_BRANDS_NAV);
-  if (user.isAdmin) list.push(MATRIX_NAV);
-  list.push(...NAV.slice(1));
+  const list = [DASHBOARD_NAV];
+  if (user.isAdmin || user.isIpcs || user.isCohortLeader) list.push(LOG_IT_NAV);
+  list.push(SHOOT_SCHEDULE_NAV);
   if (user.isAdmin) list.push(ADMIN_NAV);
   return list;
 }

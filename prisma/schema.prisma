@@ -26,29 +26,19 @@ enum AppRole {
   FLOATER
 }
 
-enum StatusState {
-  PENDING
-  PARTIAL
-  DONE
-}
-
-enum Week {
-  W1
-  W2
-  W3
-  W4
-}
-
-enum PlanKind {
-  FESTIVAL
-  NON_IP
-}
-
 enum PlanFormat {
   STORY
   REEL
   AV
   GIF
+}
+
+/// What kind of piece was logged: ordinary IP output, a festival piece, or
+/// one-off non-IP work.
+enum PieceKind {
+  REGULAR
+  FESTIVAL
+  NON_IP
 }
 
 model Cohort {
@@ -58,49 +48,44 @@ model Cohort {
   leaderPersonId String?
   createdAt      DateTime @default(now())
 
-  leader               Person?              @relation("CohortLeader", fields: [leaderPersonId], references: [id], onDelete: SetNull)
-  brands               Brand[]
-  rotationAssignments  RotationAssignment[]
-  tradesReleased       Trade[]              @relation("TradeReleased")
-  tradesClaimed        Trade[]              @relation("TradeClaimed")
-  cohortWeeklyStatuses CohortWeeklyStatus[]
-  shoots               Shoot[]
+  leader Person? @relation("CohortLeader", fields: [leaderPersonId], references: [id], onDelete: SetNull)
+  brands Brand[]
+  shoots Shoot[]
+  /// The IPs this cohort is fixed to — set once in Admin, not rotated weekly.
+  ips    Ip[]
 }
 
 /// A brand (client). The table keeps its original "Client" name in the database.
 model Brand {
-  id       String @id @default(cuid())
-  name     String
-  cohortId String
+  id               String  @id @default(cuid())
+  name             String
+  cohortId         String
   /// Month the brand was added after launch ("2026-10"); null for the launch roster.
   /// Each brand added after launch raises the monthly IP base target.
   addedMonthKey    String?
   /// Month from which the brand no longer counts (null = active).
   archivedMonthKey String?
 
-  cohort         Cohort         @relation(fields: [cohortId], references: [id], onDelete: Cascade)
-  ipMonths       BrandIpMonth[]
-  pieces         Piece[]
-  plannedEntries PlannedEntry[]
-  shoots         Shoot[]
+  cohort   Cohort         @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  ipMonths BrandIpMonth[]
+  pieces   Piece[]
+  shoots   Shoot[]
 
   @@unique([cohortId, name])
   @@map("Client")
 }
 
 model Ip {
-  id                  String @id @default(cuid())
-  name                String @unique
-  defaultWeeklyTarget Int
-  sortOrder           Int    @default(0)
+  id        String @id @default(cuid())
+  name      String @unique
+  sortOrder Int    @default(0)
 
-  assignments          PersonAssignment[]
-  brandMonths          BrandIpMonth[]
-  pieces               Piece[]
-  rotationEntries      RotationEntry[]
-  trades               Trade[]
-  cohortWeeklyStatuses CohortWeeklyStatus[]
-  shoots               Shoot[]
+  assignments PersonAssignment[]
+  brandMonths BrandIpMonth[]
+  pieces      Piece[]
+  shoots      Shoot[]
+  /// The cohorts fixed to this IP — set once in Admin, not rotated weekly.
+  cohorts     Cohort[]
 }
 
 model Person {
@@ -113,10 +98,10 @@ model Person {
   active             Boolean  @default(true)
   createdAt          DateTime @default(now())
 
-  assignments   PersonAssignment[]
-  loggedPieces  Piece[]
-  sessions      Session[]
-  leadsCohorts  Cohort[]           @relation("CohortLeader")
+  assignments  PersonAssignment[]
+  loggedPieces Piece[]
+  sessions     Session[]
+  leadsCohorts Cohort[]           @relation("CohortLeader")
 }
 
 model Session {
@@ -159,23 +144,31 @@ model BrandIpMonth {
   @@index([monthKey])
 }
 
-/// One piece of IP content, logged the moment it's made. Achieved = count of
-/// rows for a brand+IP+month; live = count with live=true. No one types a
-/// number - the number is just how many times someone tapped "Log it."
+/// One piece of content, logged the moment it's made — the only act of
+/// "input" in the whole app. REGULAR pieces count toward a brand's IP
+/// matrix (ipId set); FESTIVAL/NON_IP pieces are the old Festive & Non-IP
+/// log, folded in here (festivalId or workLabel set instead). Achieved =
+/// count of matching rows; live = count with live=true.
 model Piece {
-  id         String   @id @default(cuid())
+  id         String      @id @default(cuid())
   monthKey   String
   brandId    String
-  ipId       String
-  live       Boolean  @default(false)
+  kind       PieceKind   @default(REGULAR)
+  ipId       String?
+  festivalId String?
+  workLabel  String?
+  format     PlanFormat?
+  live       Boolean     @default(false)
   loggedById String?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime    @default(now())
 
-  brand    Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  ip       Ip      @relation(fields: [ipId], references: [id], onDelete: Cascade)
-  loggedBy Person? @relation(fields: [loggedById], references: [id], onDelete: SetNull)
+  brand    Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  ip       Ip?       @relation(fields: [ipId], references: [id], onDelete: Cascade)
+  festival Festival? @relation(fields: [festivalId], references: [id], onDelete: Cascade)
+  loggedBy Person?   @relation(fields: [loggedById], references: [id], onDelete: SetNull)
 
   @@index([monthKey, brandId, ipId])
+  @@index([monthKey, brandId, kind, festivalId, workLabel, format])
 }
 
 /// Admin overrides for one month: a different IP base target, or the achieved
@@ -200,101 +193,7 @@ model Festival {
   sortOrder Int     @default(0)
   active    Boolean @default(true)
 
-  entries PlannedEntry[]
-}
-
-/// One piece of planned work outside the IP matrix: either a brand's work for
-/// a festival (festivalId set), or a one-off non-IP item (workLabel set, e.g.
-/// "Teaser reel"). One row per piece of content (a Story, a Reel, an AV, a
-/// GIF) — a brand can log several rows against the same festival or the same
-/// non-IP work.
-model PlannedEntry {
-  id         String     @id @default(cuid())
-  monthKey   String
-  brandId    String
-  kind       PlanKind
-  festivalId String?
-  workLabel  String?
-  format     PlanFormat
-  achieved   Int        @default(0)
-  live       Int        @default(0)
-
-  brand    Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  festival Festival? @relation(fields: [festivalId], references: [id], onDelete: Cascade)
-
-  @@index([monthKey])
-}
-
-/// One monthly rotation cycle (a fresh W1-W4 schedule). Keeping cycles
-/// separate (rather than overwriting a single live W1-W4 table) is what
-/// makes month-over-month trend charts possible.
-model RotationCycle {
-  id        String   @id @default(cuid())
-  monthKey  String   @unique // e.g. "2026-09"
-  createdAt DateTime @default(now())
-
-  entries              RotationEntry[]
-  trades               Trade[]
-  cohortWeeklyStatuses CohortWeeklyStatus[]
-}
-
-model RotationEntry {
-  id       String @id @default(cuid())
-  cycleId  String
-  ipId     String
-  week     Week
-  target   Int
-  achieved Int    @default(0)
-
-  cycle       RotationCycle        @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  ip          Ip                   @relation(fields: [ipId], references: [id], onDelete: Cascade)
-  assignments RotationAssignment[]
-
-  @@unique([cycleId, ipId, week])
-}
-
-model RotationAssignment {
-  id       String @id @default(cuid())
-  entryId  String
-  cohortId String
-
-  entry  RotationEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  cohort Cohort        @relation(fields: [cohortId], references: [id], onDelete: Cascade)
-
-  @@unique([entryId, cohortId])
-}
-
-model Trade {
-  id                String   @id @default(cuid())
-  cycleId           String
-  ipId              String
-  week              Week
-  releasedCohortId  String
-  claimedCohortId   String
-  note              String?
-  createdAt         DateTime @default(now())
-
-  cycle          RotationCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  ip             Ip            @relation(fields: [ipId], references: [id], onDelete: Cascade)
-  releasedCohort Cohort        @relation("TradeReleased", fields: [releasedCohortId], references: [id])
-  claimedCohort  Cohort        @relation("TradeClaimed", fields: [claimedCohortId], references: [id])
-}
-
-/// Per-cohort, per-IP, per-week status within a rotation cycle (PRD 6.6:
-/// Pending / Partial / Done), independent from the brand x IP matrix.
-model CohortWeeklyStatus {
-  id       String      @id @default(cuid())
-  cycleId  String
-  cohortId String
-  ipId     String
-  week     Week
-  status   StatusState @default(PENDING)
-
-  cycle  RotationCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  cohort Cohort        @relation(fields: [cohortId], references: [id], onDelete: Cascade)
-  ip     Ip            @relation(fields: [ipId], references: [id], onDelete: Cascade)
-
-  @@unique([cycleId, cohortId, ipId, week])
+  pieces Piece[]
 }
 
 /// One planned shoot: who's going and when. Serial number is just the row's

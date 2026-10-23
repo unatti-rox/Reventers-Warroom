@@ -5,9 +5,8 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { actionAdmin, actionUser, createSession, destroySession, getCurrentUser, type CurrentUser } from "@/lib/auth";
 import { hashPassword, temporaryPassword, verifyPassword } from "@/lib/password";
-import { getOrCreateCycle } from "@/lib/rotation";
-import { WEEKS, currentMonthKey, type WeekKey } from "@/lib/dates";
-import { AppRole, PersonRole, PlanFormat, PlanKind, StatusState } from "@/generated/prisma/enums";
+import { currentMonthKey } from "@/lib/dates";
+import { AppRole, PersonRole, PlanFormat, PieceKind } from "@/generated/prisma/enums";
 
 /** Actions return a message instead of throwing: production builds hide thrown error text. */
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -105,6 +104,13 @@ export async function changePassword(_prev: ActionResult | null, form: FormData)
 
 /* ---------------- BRAND × IP MATRIX ---------------- */
 
+/** True once an admin has fixed this IP to this brand's cohort (set in Admin → Cohorts & Brands). */
+async function assertIpPairedWithBrand(brandId: string, ipId: string) {
+  const cohortId = await brandCohortId(brandId);
+  const paired = await prisma.cohort.findFirst({ where: { id: cohortId, ips: { some: { id: ipId } } } });
+  if (!paired) refuse("This IP isn't paired with that brand's cohort yet — set that in Admin.");
+}
+
 export async function setBrandIpTarget(monthKey: string, brandId: string, ipId: string, value: number) {
   return run(async () => {
     const user = await actionUser();
@@ -114,6 +120,7 @@ export async function setBrandIpTarget(monthKey: string, brandId: string, ipId: 
       const cohortId = await brandCohortId(brandId);
       if (!user.cohortIds.includes(cohortId)) refuse("Only this brand's cohort leader sets its targets.");
     }
+    await assertIpPairedWithBrand(brandId, ipId);
     await prisma.brandIpMonth.upsert({
       where: { monthKey_brandId_ipId: { monthKey, brandId, ipId } },
       update: { target: v },
@@ -125,9 +132,8 @@ export async function setBrandIpTarget(monthKey: string, brandId: string, ipId: 
 async function assertCanLogPiece(user: CurrentUser, brandId: string, ipId: string) {
   if (user.isAdmin) return;
   const cohortId = await brandCohortId(brandId);
-  if (!user.cohortIds.includes(cohortId) && !user.ipcsIpIds.includes(ipId)) {
-    refuse("Only this brand's cohort leader or the IP's IP CS can log it.");
-  }
+  if (user.cohortIds.includes(cohortId) || user.ipcsIpIds.includes(ipId)) return;
+  refuse("Only this brand's cohort leader or the IP's IP CS can log it.");
 }
 
 /** The core "Log it" action: one piece of IP content, made just now. No numbers to type. */
@@ -136,7 +142,8 @@ export async function logPiece(monthKey: string, brandId: string, ipId: string) 
     const user = await actionUser();
     checkMonth(monthKey);
     await assertCanLogPiece(user, brandId, ipId);
-    await prisma.piece.create({ data: { monthKey, brandId, ipId, loggedById: user.id } });
+    await assertIpPairedWithBrand(brandId, ipId);
+    await prisma.piece.create({ data: { monthKey, brandId, ipId, kind: PieceKind.REGULAR, loggedById: user.id } });
   });
 }
 
@@ -145,7 +152,10 @@ export async function markOneLive(monthKey: string, brandId: string, ipId: strin
   return run(async () => {
     const user = await actionUser();
     await assertCanLogPiece(user, brandId, ipId);
-    const piece = await prisma.piece.findFirst({ where: { monthKey, brandId, ipId, live: false }, orderBy: { createdAt: "asc" } });
+    const piece = await prisma.piece.findFirst({
+      where: { monthKey, brandId, ipId, kind: PieceKind.REGULAR, live: false },
+      orderBy: { createdAt: "asc" },
+    });
     if (!piece) refuse("Nothing logged yet to mark live.");
     await prisma.piece.update({ where: { id: piece.id }, data: { live: true } });
   });
@@ -156,145 +166,57 @@ export async function undoLastPiece(monthKey: string, brandId: string, ipId: str
   return run(async () => {
     const user = await actionUser();
     await assertCanLogPiece(user, brandId, ipId);
-    const piece = await prisma.piece.findFirst({ where: { monthKey, brandId, ipId }, orderBy: { createdAt: "desc" } });
+    const piece = await prisma.piece.findFirst({ where: { monthKey, brandId, ipId, kind: PieceKind.REGULAR }, orderBy: { createdAt: "desc" } });
     if (!piece) refuse("Nothing to undo.");
     await prisma.piece.delete({ where: { id: piece.id } });
   });
 }
 
-/* ---------------- ROTATION ---------------- */
+/* ---------------- FESTIVE & NON-IP (logged the same way, into the same Piece log) ---------------- */
 
-async function getEntry(monthKey: string, ipId: string, week: WeekKey) {
-  const cycle = await getOrCreateCycle(monthKey);
-  return prisma.rotationEntry.findUniqueOrThrow({
-    where: { cycleId_ipId_week: { cycleId: cycle.id, ipId, week } },
-  });
+function plannedWhere(kind: "FESTIVAL" | "NON_IP", detail: string) {
+  return kind === "FESTIVAL" ? { festivalId: detail } : { workLabel: detail };
 }
 
-/** Changes an IP's weekly target from this month on (admins). */
-export async function setIpWeeklyTarget(monthKey: string, ipId: string, target: number) {
-  return run(async () => {
-    await actionAdmin();
-    checkMonth(monthKey);
-    const v = count(target);
-    await getOrCreateCycle(monthKey);
-    await prisma.ip.update({ where: { id: ipId }, data: { defaultWeeklyTarget: v } });
-    await prisma.rotationEntry.updateMany({ where: { ipId, cycle: { monthKey: { gte: monthKey } } }, data: { target: v } });
-  });
-}
-
-export async function toggleRotationCohort(monthKey: string, ipId: string, week: WeekKey, cohortId: string) {
-  return run(async () => {
-    await actionAdmin();
-    checkMonth(monthKey);
-    if (!WEEKS.includes(week)) refuse("Invalid week.");
-    const entry = await getEntry(monthKey, ipId, week);
-    const existing = await prisma.rotationAssignment.findUnique({
-      where: { entryId_cohortId: { entryId: entry.id, cohortId } },
-    });
-    if (existing) await prisma.rotationAssignment.delete({ where: { id: existing.id } });
-    else await prisma.rotationAssignment.create({ data: { entryId: entry.id, cohortId } });
-  });
-}
-
-/* ---------------- TRADES & COHORT PROGRESS ---------------- */
-
-export async function submitTrade(input: {
-  monthKey: string;
-  ipId: string;
-  week: WeekKey;
-  releasedCohortId: string;
-  claimedCohortId: string;
-  note?: string;
-}) {
-  return run(async () => {
-    const user = await actionUser();
-    if (!user.isAdmin && user.appRole !== "COHORT_LEADER") refuse("Only cohort leaders and admins log trades.");
-    checkMonth(input.monthKey);
-    if (input.releasedCohortId === input.claimedCohortId) refuse("A cohort can't trade with itself.");
-    const cycle = await getOrCreateCycle(input.monthKey);
-    await prisma.trade.create({
-      data: {
-        cycleId: cycle.id,
-        ipId: input.ipId,
-        week: input.week,
-        releasedCohortId: input.releasedCohortId,
-        claimedCohortId: input.claimedCohortId,
-        note: input.note?.trim().slice(0, 300) || null,
-      },
-    });
-  });
-}
-
-export async function deleteTrade(tradeId: string) {
-  return run(async () => {
-    const user = await actionUser();
-    if (!user.isAdmin && user.appRole !== "COHORT_LEADER") refuse("Only cohort leaders and admins can remove trades.");
-    await prisma.trade.delete({ where: { id: tradeId } });
-  });
-}
-
-const STATUS_CYCLE: Record<StatusState, StatusState> = {
-  PENDING: StatusState.PARTIAL,
-  PARTIAL: StatusState.DONE,
-  DONE: StatusState.PENDING,
-};
-
-export async function cycleCohortWeeklyStatus(monthKey: string, cohortId: string, ipId: string, week: WeekKey) {
-  return run(async () => {
-    const user = await actionUser();
-    if (!user.isAdmin && !user.cohortIds.includes(cohortId) && !user.ipcsIpIds.includes(ipId)) {
-      refuse("Only this cohort's leader or the IP's IP CS can update this.");
-    }
-    const cycle = await getOrCreateCycle(monthKey);
-    const where = { cycleId_cohortId_ipId_week: { cycleId: cycle.id, cohortId, ipId, week } };
-    const existing = await prisma.cohortWeeklyStatus.findUnique({ where });
-    const next = STATUS_CYCLE[existing?.status ?? StatusState.PENDING];
-    await prisma.cohortWeeklyStatus.upsert({
-      where,
-      update: { status: next },
-      create: { cycleId: cycle.id, cohortId, ipId, week, status: next },
-    });
-  });
-}
-
-/* ---------------- FESTIVE & NON-IP ---------------- */
-
-/** Add one piece of planned work: `detail` is a festival id for FESTIVAL, or a free-text label (e.g. "Teaser reel") for NON_IP. */
-export async function addPlannedEntry(monthKey: string, brandId: string, kind: PlanKind, detail: string, format: PlanFormat) {
+/** `detail` is a festival id for FESTIVAL, or a free-text label (e.g. "Teaser reel") for NON_IP. */
+export async function logPlannedPiece(monthKey: string, brandId: string, kind: "FESTIVAL" | "NON_IP", detail: string, format: PlanFormat) {
   return run(async () => {
     const user = await actionUser();
     checkMonth(monthKey);
     await assertLeadsBrand(user, brandId);
     if (kind === "FESTIVAL") {
       if (!(await prisma.festival.findUnique({ where: { id: detail } }))) refuse("Pick a festival.");
-      await prisma.plannedEntry.create({ data: { monthKey, brandId, kind, festivalId: detail, format } });
+      await prisma.piece.create({ data: { monthKey, brandId, kind: PieceKind.FESTIVAL, festivalId: detail, format, loggedById: user.id } });
     } else {
       const workLabel = text(detail, "the non-IP work");
-      await prisma.plannedEntry.create({ data: { monthKey, brandId, kind, workLabel, format } });
+      await prisma.piece.create({ data: { monthKey, brandId, kind: PieceKind.NON_IP, workLabel, format, loggedById: user.id } });
     }
   });
 }
 
-export async function removePlannedEntry(entryId: string) {
+export async function markPlannedLive(monthKey: string, brandId: string, kind: "FESTIVAL" | "NON_IP", detail: string, format: PlanFormat) {
   return run(async () => {
     const user = await actionUser();
-    const entry = await prisma.plannedEntry.findUnique({ where: { id: entryId } });
-    if (!entry) return;
-    await assertLeadsBrand(user, entry.brandId);
-    await prisma.plannedEntry.delete({ where: { id: entryId } });
+    await assertLeadsBrand(user, brandId);
+    const piece = await prisma.piece.findFirst({
+      where: { monthKey, brandId, kind: kind === "FESTIVAL" ? PieceKind.FESTIVAL : PieceKind.NON_IP, format, live: false, ...plannedWhere(kind, detail) },
+      orderBy: { createdAt: "asc" },
+    });
+    if (!piece) refuse("Nothing logged yet to mark live.");
+    await prisma.piece.update({ where: { id: piece.id }, data: { live: true } });
   });
 }
 
-export async function setPlannedValue(entryId: string, field: "achieved" | "live", value: number) {
+export async function undoPlannedPiece(monthKey: string, brandId: string, kind: "FESTIVAL" | "NON_IP", detail: string, format: PlanFormat) {
   return run(async () => {
     const user = await actionUser();
-    const entry = await prisma.plannedEntry.findUnique({ where: { id: entryId } });
-    if (!entry) refuse("That row is already gone.");
-    checkMonth(entry.monthKey);
-    await assertLeadsBrand(user, entry.brandId);
-    const v = count(value);
-    await prisma.plannedEntry.update({ where: { id: entryId }, data: { [field]: v } });
+    await assertLeadsBrand(user, brandId);
+    const piece = await prisma.piece.findFirst({
+      where: { monthKey, brandId, kind: kind === "FESTIVAL" ? PieceKind.FESTIVAL : PieceKind.NON_IP, format, ...plannedWhere(kind, detail) },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!piece) refuse("Nothing to undo.");
+    await prisma.piece.delete({ where: { id: piece.id } });
   });
 }
 
@@ -410,6 +332,14 @@ export async function setCohortLeader(cohortId: string, personId: string) {
   });
 }
 
+/** Sets this cohort's fixed IPs (replaces the whole set) — no more weekly rotation to manage. */
+export async function setCohortIps(cohortId: string, ipIds: string[]) {
+  return run(async () => {
+    await actionAdmin();
+    await prisma.cohort.update({ where: { id: cohortId }, data: { ips: { set: ipIds.map((id) => ({ id })) } } });
+  });
+}
+
 export async function addBrand(name: string, cohortId: string) {
   return run(async () => {
     await actionAdmin();
@@ -478,13 +408,13 @@ export async function resetPassword(personId: string) {
   });
 }
 
-export async function addIp(name: string, weeklyTarget: number) {
+export async function addIp(name: string) {
   return run(async () => {
     await actionAdmin();
     const n = text(name, "an IP name");
     if (await prisma.ip.findUnique({ where: { name: n } })) refuse(`${n} already exists.`);
     const last = await prisma.ip.findFirst({ orderBy: { sortOrder: "desc" } });
-    await prisma.ip.create({ data: { name: n, defaultWeeklyTarget: count(weeklyTarget), sortOrder: (last?.sortOrder ?? 0) + 1 } });
+    await prisma.ip.create({ data: { name: n, sortOrder: (last?.sortOrder ?? 0) + 1 } });
   });
 }
 

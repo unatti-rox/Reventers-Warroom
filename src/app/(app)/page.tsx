@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { PageHeader, Card, CardHead, ProgressBar, KpiTile } from "@/components/ui";
-import { getCohortOverview, getIpOverview, getOverviewExtras } from "@/lib/queries";
+import { PageHeader, Card, CardHead, ProgressBar, KpiTile, Th, Td } from "@/components/ui";
+import { getCohortOverview, getIpOverview, getFestiveNonIpTotals, getMatrix } from "@/lib/queries";
 import { getYearSummary } from "@/lib/targets";
 import { currentMonthKey, monthKeyLabel, yearStartFor } from "@/lib/dates";
 import { requireUser } from "@/lib/auth";
@@ -12,31 +11,35 @@ function statusColor(pct: number): string {
   return "var(--status-critical)";
 }
 
-export default async function OverviewPage() {
-  const user = await requireUser();
-  if (!user.isAdmin && user.ipcsIpIds.length > 0) redirect("/update-status");
-  if (!user.isAdmin && user.cohortIds.length > 0) redirect("/my-brands");
+/**
+ * Everyone's shared visibility page: the same numbers for Ishika, IP CS, and
+ * L2s alike — one dashboard, not a different view per role. Everything on
+ * it is computed from the Piece log; nothing here is typed in.
+ */
+export default async function DashboardPage() {
+  await requireUser();
 
   const monthKey = currentMonthKey();
-  const [cohorts, ips, year, extras] = await Promise.all([
+  const [cohorts, ips, year, planned, matrix] = await Promise.all([
     getCohortOverview(monthKey),
     getIpOverview(monthKey),
     getYearSummary(yearStartFor(monthKey)),
-    getOverviewExtras(monthKey),
+    getFestiveNonIpTotals(monthKey),
+    getMatrix(monthKey),
   ]);
   const current = year.current;
   const pct = current && current.target ? Math.min(100, Math.round((current.achieved / current.target) * 100)) : 0;
 
   const needsAttention = [
-    ...cohorts.map((c) => ({ label: c.code, sub: c.leaderName, pct: c.pct, href: `/matrix?cohort=${c.code}` })),
-    ...ips.map((ip) => ({ label: ip.name, sub: "IP", pct: ip.pct, href: `/matrix?ip=${ip.id}` })),
+    ...cohorts.map((c) => ({ label: c.code, sub: c.leaderName, pct: c.pct })),
+    ...ips.map((ip) => ({ label: ip.name, sub: "IP", pct: ip.pct })),
   ]
     .sort((a, b) => a.pct - b.pct)
     .slice(0, 5);
 
   return (
     <div>
-      <PageHeader title="Overview" subtitle="Everything that's done this month, at a glance" />
+      <PageHeader title="Dashboard" subtitle="Everything that's been logged this month, at a glance" />
 
       <Card className="p-6 mb-5">
         <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
@@ -62,32 +65,16 @@ export default async function OverviewPage() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-        <Link href="/rotation">
-          <KpiTile label="Weekly Rotation" value={extras.week} meta={`${extras.assignedCohortCount} of ${extras.totalCohortCount} cohorts on duty this week`} />
-        </Link>
-        <Link href="/festive">
-          <KpiTile
-            label="Festive & Non-IP"
-            value={`${extras.festiveNonIpDone}/${extras.festiveNonIpTotal}`}
-            meta={extras.festiveNonIpTotal ? "entries live this month" : "nothing logged this month"}
-          />
-        </Link>
-        <Link href="/trades">
-          <KpiTile label="Trade-off Log" value={extras.tradeCount} meta={`cohort trade${extras.tradeCount === 1 ? "" : "s"} this month`} />
-        </Link>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+        <KpiTile label="Festive" value={planned.festive.achieved} meta={`${planned.festive.live} live this month`} />
+        <KpiTile label="Non-IP" value={planned.nonIp.achieved} meta={`${planned.nonIp.live} live this month`} />
       </div>
 
       <Card className="mb-5">
         <CardHead title="Needs attention" subtitle="The 5 lowest-completion cohorts and IPs this month" />
         <div>
           {needsAttention.map((item, i) => (
-            <Link
-              key={`${item.label}-${i}`}
-              href={item.href}
-              className="flex items-center justify-between gap-3 px-5 py-3 border-b last:border-0"
-              style={{ borderColor: "var(--border)" }}
-            >
+            <div key={`${item.label}-${i}`} className="flex items-center justify-between gap-3 px-5 py-3 border-b last:border-0" style={{ borderColor: "var(--border)" }}>
               <div className="flex items-center gap-2.5">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: statusColor(item.pct) }} />
                 <div>
@@ -100,7 +87,7 @@ export default async function OverviewPage() {
               <div className="text-[13px] font-extrabold tabular-nums" style={{ color: statusColor(item.pct) }}>
                 {item.pct}%
               </div>
-            </Link>
+            </div>
           ))}
           {needsAttention.length === 0 && (
             <div className="text-[11px] py-6 text-center" style={{ color: "var(--text-muted)" }}>
@@ -110,23 +97,18 @@ export default async function OverviewPage() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
         <Card>
           <CardHead title="By cohort" subtitle="Cohort Leader = person responsible for the cohort" />
           <div>
             {cohorts.map((c) => (
-              <Link
-                key={c.id}
-                href={`/matrix?cohort=${c.code}`}
-                className="flex items-center gap-3 px-5 py-3 border-b last:border-0"
-                style={{ borderColor: "var(--border)" }}
-              >
+              <div key={c.id} className="flex items-center gap-3 px-5 py-3 border-b last:border-0" style={{ borderColor: "var(--border)" }}>
                 <span className="text-[11px] font-bold w-7 shrink-0">{c.code}</span>
                 <div className="flex-1 min-w-0">
                   <ProgressBar pct={c.pct} color={statusColor(c.pct)} />
                 </div>
                 <span className="text-[11px] font-bold tabular-nums w-10 text-right shrink-0">{c.pct}%</span>
-              </Link>
+              </div>
             ))}
           </div>
         </Card>
@@ -135,28 +117,65 @@ export default async function OverviewPage() {
           <CardHead title="By IP" subtitle="Content format completion across all brands" />
           <div>
             {ips.map((ip) => (
-              <Link
-                key={ip.id}
-                href={`/matrix?ip=${ip.id}`}
-                className="flex items-center gap-3 px-5 py-3 border-b last:border-0"
-                style={{ borderColor: "var(--border)" }}
-              >
+              <div key={ip.id} className="flex items-center gap-3 px-5 py-3 border-b last:border-0" style={{ borderColor: "var(--border)" }}>
                 <span className="text-[11px] font-bold flex-1 min-w-0 truncate pr-2">{ip.name}</span>
                 <div className="w-[90px] shrink-0">
                   <ProgressBar pct={ip.pct} color={statusColor(ip.pct)} />
                 </div>
                 <span className="text-[11px] font-bold tabular-nums w-10 text-right shrink-0">{ip.pct}%</span>
-              </Link>
+              </div>
             ))}
           </div>
         </Card>
       </div>
 
-      <div className="mt-6 text-center">
-        <Link href="/matrix" className="text-[11px] underline" style={{ color: "var(--text-muted)" }}>
-          Open advanced tools (matrix, rotation, festive, trends) →
-        </Link>
-      </div>
+      <Card>
+        <CardHead title="Every brand × IP" subtitle="The floor-level detail behind the percentages above" />
+        <div className="overflow-auto">
+          <table className="w-full border-collapse" style={{ minWidth: 760 }}>
+            <thead>
+              <tr>
+                <Th>Brand</Th>
+                <Th>IP</Th>
+                <Th align="right">Target</Th>
+                <Th align="right">Achieved</Th>
+                <Th align="right">Live</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {matrix.cohorts.flatMap((cohort) =>
+                cohort.brands.flatMap((brand) =>
+                  matrix.ips
+                    .filter((ip) => matrix.cellMap.has(`${brand.id}:${ip.id}`))
+                    .map((ip) => {
+                      const cell = matrix.cellMap.get(`${brand.id}:${ip.id}`)!;
+                      return (
+                        <tr key={`${brand.id}:${ip.id}`}>
+                          <Td className="font-bold">
+                            {brand.name}
+                            <div className="text-[9.5px] font-normal" style={{ color: "var(--text-muted)" }}>
+                              {cohort.code} · {cohort.leaderName}
+                            </div>
+                          </Td>
+                          <Td>{ip.name}</Td>
+                          <Td align="right" className="tabular-nums">
+                            {cell.target}
+                          </Td>
+                          <Td align="right" className="tabular-nums font-bold">
+                            {cell.achieved}
+                          </Td>
+                          <Td align="right" className="tabular-nums">
+                            {cell.live}
+                          </Td>
+                        </tr>
+                      );
+                    }),
+                ),
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }

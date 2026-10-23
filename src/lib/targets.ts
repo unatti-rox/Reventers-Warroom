@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { PieceKind } from "@/generated/prisma/enums";
 import { currentMonthKey, yearMonths } from "@/lib/dates";
 
 export const DEFAULT_BASE = 192;
@@ -46,29 +47,39 @@ export async function getYearSummary(startYear: number) {
   const last = months[months.length - 1];
   const now = currentMonthKey();
 
-  const [settings, brands, monthSettings, pieceTotals, pieceLive, festive, nonIp] = await Promise.all([
+  const [settings, brands, monthSettings, pieceTotals, pieceLive, festiveTotals, festiveLive, nonIpTotals, nonIpLive] = await Promise.all([
     getTargetSettings(),
     prisma.brand.findMany({ select: { addedMonthKey: true, archivedMonthKey: true } }),
     prisma.monthSetting.findMany({ where: { monthKey: { gte: first, lte: last } } }),
     prisma.piece.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last } },
+      where: { monthKey: { gte: first, lte: last }, kind: PieceKind.REGULAR },
       _count: { _all: true },
     }),
     prisma.piece.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, live: true },
+      where: { monthKey: { gte: first, lte: last }, kind: PieceKind.REGULAR, live: true },
       _count: { _all: true },
     }),
-    prisma.plannedEntry.groupBy({
+    prisma.piece.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: "FESTIVAL" },
-      _sum: { achieved: true, live: true },
+      where: { monthKey: { gte: first, lte: last }, kind: PieceKind.FESTIVAL },
+      _count: { _all: true },
     }),
-    prisma.plannedEntry.groupBy({
+    prisma.piece.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: "NON_IP" },
-      _sum: { achieved: true, live: true },
+      where: { monthKey: { gte: first, lte: last }, kind: PieceKind.FESTIVAL, live: true },
+      _count: { _all: true },
+    }),
+    prisma.piece.groupBy({
+      by: ["monthKey"],
+      where: { monthKey: { gte: first, lte: last }, kind: PieceKind.NON_IP },
+      _count: { _all: true },
+    }),
+    prisma.piece.groupBy({
+      by: ["monthKey"],
+      where: { monthKey: { gte: first, lte: last }, kind: PieceKind.NON_IP, live: true },
+      _count: { _all: true },
     }),
   ]);
 
@@ -85,8 +96,6 @@ export async function getYearSummary(startYear: number) {
     const achieved = setting?.achievedOverride ?? pieceTotals.find((x) => x.monthKey === monthKey)?._count._all ?? 0;
     const backlogIn = carryKnown ? carry : null;
     const target = base + (backlogIn ?? 0);
-    const f = festive.find((x) => x.monthKey === monthKey)?._sum;
-    const n = nonIp.find((x) => x.monthKey === monthKey)?._sum;
 
     rows.push({
       monthKey,
@@ -99,8 +108,14 @@ export async function getYearSummary(startYear: number) {
       achieved,
       achievedIsOverride: setting?.achievedOverride != null,
       gap: timing === "future" ? null : target - achieved,
-      festive: { achieved: f?.achieved ?? 0, live: f?.live ?? 0 },
-      nonIp: { achieved: n?.achieved ?? 0, live: n?.live ?? 0 },
+      festive: {
+        achieved: festiveTotals.find((x) => x.monthKey === monthKey)?._count._all ?? 0,
+        live: festiveLive.find((x) => x.monthKey === monthKey)?._count._all ?? 0,
+      },
+      nonIp: {
+        achieved: nonIpTotals.find((x) => x.monthKey === monthKey)?._count._all ?? 0,
+        live: nonIpLive.find((x) => x.monthKey === monthKey)?._count._all ?? 0,
+      },
       ipLive: pieceLive.find((x) => x.monthKey === monthKey)?._count._all ?? 0,
     });
 

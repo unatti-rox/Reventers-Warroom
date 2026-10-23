@@ -41,8 +41,6 @@ function connectionConfig(raw: string | undefined) {
 const adapter = new PrismaPg(connectionConfig(process.env.DIRECT_URL || process.env.DATABASE_URL));
 const prisma = new PrismaClient({ adapter });
 
-const WEEKS = ["W1", "W2", "W3", "W4"] as const;
-
 /** The admins' chosen passwords (scrypt hashes). */
 const ISHIKA_PASSWORD_HASH = "scrypt$6JUy5_1jha5DI6-DUV9XYw$lkmP7_cL-gQufU7KTR1zvlpBHHlBgsMUJxECX8rP8ISMQvOwPifdicn4QvD4A23iKjY6SOMM-jTl1hhqu2oN8w";
 const UNNATI_PASSWORD_HASH = "scrypt$2AvLUaCHtJ8__k6uKJ3OpQ$W8JylPnZH3jUHoH9bUePBdj29twNbHbOZD777JHCtohIqHHqjcXCthhN0g_cX1GwEMNu7p2aFvPHpbU1tNU4CA";
@@ -313,39 +311,19 @@ async function applyShradhaCorrection() {
  * assignments forward (see getOrCreateCycle), so the pairing persists
  * automatically. Runs once (tracked by its own marker).
  */
+/** No-op: the weekly rotation this used to pair Shradha's C9 into is gone (cohorts now have a fixed IP pairing, set in Admin). Marker kept so it never runs its old body. */
 async function applyShradhaRotationSlot() {
   const key = "shradha-rotation-slot.2026-10";
   if (await prisma.appSetting.findUnique({ where: { key } })) return;
-
-  const c1 = await prisma.cohort.findUniqueOrThrow({ where: { code: "C1" } });
-  const c9 = await prisma.cohort.findUniqueOrThrow({ where: { code: "C9" } });
-  const monthKey = currentMonthKey();
-
-  const cycle = await prisma.rotationCycle.findUnique({
-    where: { monthKey },
-    include: { entries: { include: { assignments: true } } },
-  });
-  if (cycle) {
-    for (const entry of cycle.entries) {
-      const hasC1 = entry.assignments.some((a) => a.cohortId === c1.id);
-      const hasC9 = entry.assignments.some((a) => a.cohortId === c9.id);
-      if (hasC1 && !hasC9) {
-        await prisma.rotationAssignment.create({ data: { entryId: entry.id, cohortId: c9.id } });
-      }
-    }
-  }
-
   await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
-  console.log("Shradha paired with Aasawari in the weekly rotation (Oct 2026).");
 }
 
 /**
  * These 4 clients discontinued and had already been archived (hidden from
- * the Matrix, Overview and Festive pages, but still listed in Admin). Per
- * instruction, removed outright instead - deleting a Brand cascades to its
- * BrandIpMonth and PlannedEntry rows, which were empty anyway (no real
- * numbers had been entered for these yet). Runs once (tracked by its own
- * marker).
+ * the dashboard, but still listed in Admin). Per instruction, removed
+ * outright instead - deleting a Brand cascades to its BrandIpMonth and
+ * Piece rows, which were empty anyway (no real numbers had been entered
+ * for these yet). Runs once (tracked by its own marker).
  */
 async function deleteDiscontinuedBrands() {
   const key = "delete-discontinued-brands.2026-10";
@@ -444,39 +422,11 @@ async function replaceC8Leaders() {
   console.log("C8 leadership replaced with Harshil & Aditi (Oct 2026).");
 }
 
-/**
- * C8 (Harshil & Aditi) joins the Yoshita+Karan rotation group as a third
- * cohort: adds C8 to every IP+week entry this month that already has both
- * C6 and C7 assigned. Same technique as pairing Shradha's C9 with
- * Aasawari's C1 - future months inherit it since each new cycle clones the
- * previous one's cohort assignments. Runs once (tracked by its own marker).
- */
+/** No-op: the weekly rotation group this used to add C8 to is gone (cohorts now have a fixed IP pairing, set in Admin). Marker kept so it never runs its old body. */
 async function addC8ToYoshitaKaranGroup() {
   const key = "c8-join-yk-group.2026-10";
   if (await prisma.appSetting.findUnique({ where: { key } })) return;
-
-  const c6 = await prisma.cohort.findUniqueOrThrow({ where: { code: "C6" } });
-  const c7 = await prisma.cohort.findUniqueOrThrow({ where: { code: "C7" } });
-  const c8 = await prisma.cohort.findUniqueOrThrow({ where: { code: "C8" } });
-  const monthKey = currentMonthKey();
-
-  const cycle = await prisma.rotationCycle.findUnique({
-    where: { monthKey },
-    include: { entries: { include: { assignments: true } } },
-  });
-  if (cycle) {
-    for (const entry of cycle.entries) {
-      const hasC6 = entry.assignments.some((a) => a.cohortId === c6.id);
-      const hasC7 = entry.assignments.some((a) => a.cohortId === c7.id);
-      const hasC8 = entry.assignments.some((a) => a.cohortId === c8.id);
-      if (hasC6 && hasC7 && !hasC8) {
-        await prisma.rotationAssignment.create({ data: { entryId: entry.id, cohortId: c8.id } });
-      }
-    }
-  }
-
   await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
-  console.log("Harshil & Aditi (C8) joined the Yoshita+Karan rotation group (Oct 2026).");
 }
 
 async function loadLaunchData() {
@@ -519,8 +469,8 @@ async function loadLaunchData() {
   for (const [i, ip] of ipSeed.entries()) {
     const record = await prisma.ip.upsert({
       where: { name: ip.name },
-      update: { defaultWeeklyTarget: ip.weeklyTarget, sortOrder: i + 1 },
-      create: { name: ip.name, defaultWeeklyTarget: ip.weeklyTarget, sortOrder: i + 1 },
+      update: { sortOrder: i + 1 },
+      create: { name: ip.name, sortOrder: i + 1 },
     });
     const roles = [
       ...ip.ipcs.map((name) => ({ name, role: "IP_CS" as const })),
@@ -537,31 +487,6 @@ async function loadLaunchData() {
     }
   }
   for (const name of floaterSeed) await person(name, "FLOATER");
-
-  console.log("Loading this month's rotation...");
-  const cohorts = await prisma.cohort.findMany();
-  const cohortIdByLeader = new Map(cohorts.map((c) => [c.leaderName, c.id]));
-  const monthKey = currentMonthKey();
-  const cycle = await prisma.rotationCycle.upsert({ where: { monthKey }, update: {}, create: { monthKey } });
-  for (const ip of ipSeed) {
-    const record = await prisma.ip.findUniqueOrThrow({ where: { name: ip.name } });
-    for (const [w, week] of WEEKS.entries()) {
-      const entry = await prisma.rotationEntry.upsert({
-        where: { cycleId_ipId_week: { cycleId: cycle.id, ipId: record.id, week } },
-        update: { target: ip.weeklyTarget },
-        create: { cycleId: cycle.id, ipId: record.id, week, target: ip.weeklyTarget },
-      });
-      for (const leader of ip.rotation[w]) {
-        const cohortId = cohortIdByLeader.get(leader);
-        if (!cohortId) throw new Error(`Rotation names unknown cohort leader "${leader}"`);
-        await prisma.rotationAssignment.upsert({
-          where: { entryId_cohortId: { entryId: entry.id, cohortId } },
-          update: {},
-          create: { entryId: entry.id, cohortId },
-        });
-      }
-    }
-  }
 
   console.log("Loading festivals...");
   if ((await prisma.festival.count()) === 0) {

@@ -9,6 +9,7 @@ import {
   AddIpMemberForm,
   AddPersonForm,
   BrandRow,
+  CohortIpsForm,
   CohortLeaderSelect,
   FestivalRow,
   IpMemberChip,
@@ -124,24 +125,19 @@ async function TargetsTab({ year }: { year?: string }) {
           </table>
         </div>
       </Card>
-      <p className="text-[11px] mt-3" style={{ color: "var(--text-muted)" }}>
-        Each IP&apos;s weekly target is edited on the{" "}
-        <Link href="/rotation" className="underline">
-          Weekly Rotation
-        </Link>{" "}
-        page.
-      </p>
     </>
   );
 }
 
 async function CohortsTab() {
-  const [cohorts, people] = await Promise.all([
-    prisma.cohort.findMany({ orderBy: { code: "asc" }, include: { brands: { orderBy: { name: "asc" } } } }),
+  const [cohorts, people, ips] = await Promise.all([
+    prisma.cohort.findMany({ orderBy: { code: "asc" }, include: { brands: { orderBy: { name: "asc" } }, ips: true } }),
     prisma.person.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.ip.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
   ]);
   const cohortOptions = cohorts.map((c) => ({ id: c.id, label: `${c.code} · ${c.leaderName}` }));
   const peopleOptions = people.map((p) => ({ id: p.id, label: `${p.name} (${ROLE_LABEL[p.appRole]})` }));
+  const ipOptions = ips.map((ip) => ({ id: ip.id, label: ip.name }));
   return (
     <>
       <Card className="mb-5">
@@ -159,6 +155,12 @@ async function CohortsTab() {
               subtitle={`${c.brands.filter((b) => !b.archivedMonthKey).length} active brands · change a brand's cohort to move it`}
               right={<CohortLeaderSelect cohortId={c.id} current={c.leaderPersonId} people={peopleOptions} />}
             />
+            <div className="px-5 pt-3">
+              <div className="text-[9.5px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+                Fixed IPs — this cohort only logs work against these
+              </div>
+              <CohortIpsForm cohortId={c.id} allIps={ipOptions} selected={c.ips.map((ip) => ip.id)} />
+            </div>
             <div className="px-5 py-2">
               {c.brands.map((b) => (
                 <BrandRow
@@ -230,13 +232,13 @@ async function IpsTab() {
   return (
     <>
       <Card className="mb-5">
-        <CardHead title="Add an IP" subtitle="Weekly target can be changed later on Weekly Rotation" />
+        <CardHead title="Add an IP" subtitle="Pair it with cohorts on the Cohorts & Brands tab" />
         <div className="p-5">
           <AddIpForm />
         </div>
       </Card>
       <Card>
-        <CardHead title="IP teams" subtitle="Who handles each IP. Used for the dashboard, rotation and matrix permissions." />
+        <CardHead title="IP teams" subtitle="Who handles each IP. Used for dashboard and matrix permissions." />
         <div className="overflow-auto">
           <table className="w-full border-collapse" style={{ minWidth: 760 }}>
             <thead>
@@ -248,12 +250,7 @@ async function IpsTab() {
             <tbody>
               {ips.map((ip) => (
                 <tr key={ip.id}>
-                  <Td className="font-bold align-top">
-                    {ip.name}
-                    <div className="text-[9.5px] font-normal" style={{ color: "var(--text-muted)" }}>
-                      {ip.defaultWeeklyTarget} a week
-                    </div>
-                  </Td>
+                  <Td className="font-bold align-top">{ip.name}</Td>
                   <Td>
                     {ip.assignments.map((a) => (
                       <IpMemberChip key={a.id} assignmentId={a.id} label={`${ROLE[a.role]}: ${a.person.name}`} />
