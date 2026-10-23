@@ -112,6 +112,46 @@ export function ShootIpCell({
   );
 }
 
+/** Brand dropdown, scoped to the shoot's own cohort (a shoot can't move to a different cohort's brand). */
+export function ShootBrandCell({
+  shootId,
+  brandId,
+  brands,
+  editable,
+}: {
+  shootId: string;
+  brandId: string;
+  brands: { id: string; name: string }[];
+  editable: boolean;
+}) {
+  const [pending, startTransition] = useTransition();
+  if (!editable) {
+    return <span>{brands.find((b) => b.id === brandId)?.name ?? "—"}</span>;
+  }
+  return (
+    <select
+      value={brandId}
+      disabled={pending}
+      onChange={(e) => {
+        const next = e.target.value;
+        startTransition(async () => {
+          const r = await updateShoot(shootId, "brandId", next);
+          if (!r.ok) alert(r.error);
+        });
+      }}
+      className="h-8 rounded-lg border px-2 text-[11px]"
+      style={{ ...inputStyle, opacity: pending ? 0.6 : 1 }}
+      aria-label="Brand"
+    >
+      {brands.map((b) => (
+        <option key={b.id} value={b.id}>
+          {b.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function RemoveShootButton({ shootId }: { shootId: string }) {
   const [pending, startTransition] = useTransition();
   return (
@@ -135,8 +175,16 @@ export function RemoveShootButton({ shootId }: { shootId: string }) {
   );
 }
 
-export function AddShootForm({ cohorts, ips }: { cohorts: { id: string; label: string }[]; ips: { id: string; name: string }[] }) {
+export function AddShootForm({
+  cohorts,
+  ips,
+}: {
+  cohorts: { id: string; label: string; brands: { id: string; name: string }[] }[];
+  ips: { id: string; name: string }[];
+}) {
   const [cohortId, setCohortId] = useState(cohorts[0]?.id ?? "");
+  const brands = cohorts.find((c) => c.id === cohortId)?.brands ?? [];
+  const [brandId, setBrandId] = useState(brands[0]?.id ?? "");
   const [ipId, setIpId] = useState(ips[0]?.id ?? "");
   const [date, setDate] = useState("");
   const [dop, setDop] = useState(DOP_PEOPLE[0]);
@@ -150,12 +198,12 @@ export function AddShootForm({ cohorts, ips }: { cohorts: { id: string; label: s
       style={{ borderColor: "var(--border)" }}
       onSubmit={(e) => {
         e.preventDefault();
-        if (!cohortId || !ipId || !date || !dop.trim() || !socialMediaPerson.trim()) {
+        if (!cohortId || !brandId || !ipId || !date || !dop.trim() || !socialMediaPerson.trim()) {
           alert("Fill in every field.");
           return;
         }
         startTransition(async () => {
-          const r = await addShoot(cohortId, ipId, date, dop, socialMediaPerson, remarks);
+          const r = await addShoot(cohortId, brandId, ipId, date, dop, socialMediaPerson, remarks);
           if (!r.ok) alert(r.error);
           else {
             setDate("");
@@ -166,10 +214,28 @@ export function AddShootForm({ cohorts, ips }: { cohorts: { id: string; label: s
         });
       }}
     >
-      <select value={cohortId} onChange={(e) => setCohortId(e.target.value)} className="h-9 rounded-lg border px-2 text-[11px]" style={inputStyle} aria-label="Cohort">
+      <select
+        value={cohortId}
+        onChange={(e) => {
+          const next = e.target.value;
+          setCohortId(next);
+          setBrandId(cohorts.find((c) => c.id === next)?.brands[0]?.id ?? "");
+        }}
+        className="h-9 rounded-lg border px-2 text-[11px]"
+        style={inputStyle}
+        aria-label="Cohort"
+      >
         {cohorts.map((c) => (
           <option key={c.id} value={c.id}>
             {c.label}
+          </option>
+        ))}
+      </select>
+      <select value={brandId} onChange={(e) => setBrandId(e.target.value)} className="h-9 rounded-lg border px-2 text-[11px]" style={inputStyle} aria-label="Brand">
+        {brands.length === 0 && <option value="">No brands in this cohort</option>}
+        {brands.map((b) => (
+          <option key={b.id} value={b.id}>
+            {b.name}
           </option>
         ))}
       </select>

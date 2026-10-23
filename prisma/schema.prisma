@@ -81,6 +81,7 @@ model Brand {
   cohort         Cohort         @relation(fields: [cohortId], references: [id], onDelete: Cascade)
   ipMonths       BrandIpMonth[]
   plannedEntries PlannedEntry[]
+  shoots         Shoot[]
 
   @@unique([cohortId, name])
   @@map("Client")
@@ -279,6 +280,7 @@ model CohortWeeklyStatus {
 model Shoot {
   id                String   @id @default(cuid())
   cohortId          String
+  brandId           String
   ipId              String
   /// "YYYY-MM-DD".
   date              String
@@ -288,6 +290,7 @@ model Shoot {
   createdAt         DateTime @default(now())
 
   cohort Cohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  brand  Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
   ip     Ip     @relation(fields: [ipId], references: [id], onDelete: Cascade)
 
   @@index([date])

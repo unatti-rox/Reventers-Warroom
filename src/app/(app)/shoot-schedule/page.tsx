@@ -1,6 +1,6 @@
 import { PageHeader, Card, CardHead, Th, Td, EmptyNote } from "@/components/ui";
 import { MonthSwitcher } from "@/components/Switchers";
-import { AddShootForm, DOP_PEOPLE, RemoveShootButton, ShootIpCell, ShootPersonCell, ShootTextCell, SOCIAL_MEDIA_PEOPLE } from "@/components/ShootScheduleControls";
+import { AddShootForm, DOP_PEOPLE, RemoveShootButton, ShootBrandCell, ShootIpCell, ShootPersonCell, ShootTextCell, SOCIAL_MEDIA_PEOPLE } from "@/components/ShootScheduleControls";
 import { getShootsView } from "@/lib/queries";
 import { requireUser } from "@/lib/auth";
 import { currentMonthKey, monthKeyLabel, yearMonths, yearStartFor } from "@/lib/dates";
@@ -13,7 +13,9 @@ export default async function ShootSchedulePage({ searchParams }: { searchParams
   const { cohorts, ips, shoots } = await getShootsView(monthKey);
 
   const canEdit = (cohortId: string) => user.isAdmin || user.cohortIds.includes(cohortId);
-  const editableCohorts = cohorts.filter((c) => canEdit(c.id)).map((c) => ({ id: c.id, label: `${c.code} · ${c.leaderName}` }));
+  const editableCohorts = cohorts
+    .filter((c) => canEdit(c.id))
+    .map((c) => ({ id: c.id, label: `${c.code} · ${c.leaderName}`, brands: c.brands.map((b) => ({ id: b.id, name: b.name })) }));
   const cohortById = new Map(cohorts.map((c) => [c.id, c]));
   const ipOptions = ips.map((ip) => ({ id: ip.id, name: ip.name }));
 
@@ -33,6 +35,7 @@ export default async function ShootSchedulePage({ searchParams }: { searchParams
               <tr>
                 <Th>#</Th>
                 <Th>Cohort</Th>
+                <Th>Brand</Th>
                 <Th>IP</Th>
                 <Th>Date</Th>
                 <Th>DOP</Th>
@@ -53,6 +56,9 @@ export default async function ShootSchedulePage({ searchParams }: { searchParams
                       <div className="text-[9.5px]" style={{ color: "var(--text-muted)" }}>
                         {cohort?.leaderName}
                       </div>
+                    </Td>
+                    <Td>
+                      <ShootBrandCell shootId={s.id} brandId={s.brandId} brands={cohort?.brands.map((b) => ({ id: b.id, name: b.name })) ?? []} editable={editable} />
                     </Td>
                     <Td>
                       <ShootIpCell shootId={s.id} ipId={s.ipId} ips={ipOptions} editable={editable} />

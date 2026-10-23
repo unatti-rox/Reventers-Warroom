@@ -270,15 +270,18 @@ export async function setPlannedValue(entryId: string, field: "achieved" | "live
 
 /* ---------------- SHOOT SCHEDULE ---------------- */
 
-export async function addShoot(cohortId: string, ipId: string, date: string, dop: string, socialMediaPerson: string, remarks: string) {
+export async function addShoot(cohortId: string, brandId: string, ipId: string, date: string, dop: string, socialMediaPerson: string, remarks: string) {
   return run(async () => {
     const user = await actionUser();
     assertLeadsCohort(user, cohortId);
     if (!DAY.test(date)) refuse("Pick a valid date.");
+    const brand = await prisma.brand.findUnique({ where: { id: brandId } });
+    if (!brand || brand.cohortId !== cohortId) refuse("Pick a brand from this cohort.");
     if (!(await prisma.ip.findUnique({ where: { id: ipId } }))) refuse("Pick an IP.");
     await prisma.shoot.create({
       data: {
         cohortId,
+        brandId,
         ipId,
         date,
         dop: text(dop, "the DOP"),
@@ -289,7 +292,7 @@ export async function addShoot(cohortId: string, ipId: string, date: string, dop
   });
 }
 
-export async function updateShoot(shootId: string, field: "ipId" | "date" | "dop" | "socialMediaPerson" | "remarks", value: string) {
+export async function updateShoot(shootId: string, field: "brandId" | "ipId" | "date" | "dop" | "socialMediaPerson" | "remarks", value: string) {
   return run(async () => {
     const user = await actionUser();
     const shoot = await prisma.shoot.findUnique({ where: { id: shootId } });
@@ -301,6 +304,10 @@ export async function updateShoot(shootId: string, field: "ipId" | "date" | "dop
       v = value;
     } else if (field === "ipId") {
       if (!(await prisma.ip.findUnique({ where: { id: value } }))) refuse("Pick an IP.");
+      v = value;
+    } else if (field === "brandId") {
+      const brand = await prisma.brand.findUnique({ where: { id: value } });
+      if (!brand || brand.cohortId !== shoot.cohortId) refuse("Pick a brand from this cohort.");
       v = value;
     } else if (field === "remarks") {
       v = String(value ?? "").trim().slice(0, 300);
