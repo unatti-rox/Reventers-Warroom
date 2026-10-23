@@ -1,6 +1,6 @@
 import { PageHeader, Card, CardHead, Th, Td, EmptyNote } from "@/components/ui";
 import { MonthSwitcher } from "@/components/Switchers";
-import { AddShootForm, RemoveShootButton, ShootIpCell, ShootSocialMediaCell, ShootTextCell } from "@/components/ShootScheduleControls";
+import { AddShootForm, DOP_PEOPLE, RemoveShootButton, ShootIpCell, ShootPersonCell, ShootTextCell, SOCIAL_MEDIA_PEOPLE } from "@/components/ShootScheduleControls";
 import { getShootsView } from "@/lib/queries";
 import { requireUser } from "@/lib/auth";
 import { currentMonthKey, monthKeyLabel, yearMonths, yearStartFor } from "@/lib/dates";
@@ -61,10 +61,10 @@ export default async function ShootSchedulePage({ searchParams }: { searchParams
                       <ShootTextCell shootId={s.id} field="date" value={s.date} editable={editable} type="date" label={`${cohort?.code} shoot date`} />
                     </Td>
                     <Td>
-                      <ShootTextCell shootId={s.id} field="dop" value={s.dop} editable={editable} label={`${cohort?.code} DOP`} />
+                      <ShootPersonCell shootId={s.id} field="dop" value={s.dop} options={DOP_PEOPLE} editable={editable} label={`${cohort?.code} DOP`} />
                     </Td>
                     <Td>
-                      <ShootSocialMediaCell shootId={s.id} value={s.socialMediaPerson} editable={editable} />
+                      <ShootPersonCell shootId={s.id} field="socialMediaPerson" value={s.socialMediaPerson} options={SOCIAL_MEDIA_PEOPLE} editable={editable} label={`${cohort?.code} social media person`} />
                     </Td>
                     <Td>
                       <ShootTextCell shootId={s.id} field="remarks" value={s.remarks} editable={editable} allowEmpty label={`${cohort?.code} remarks`} />

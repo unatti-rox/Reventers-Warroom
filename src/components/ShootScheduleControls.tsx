@@ -5,6 +5,7 @@ import { EditableText } from "@/components/EditableText";
 import { addShoot, removeShoot, updateShoot } from "@/lib/actions";
 import { inputStyle, primaryButtonStyle } from "@/components/ui";
 
+export const DOP_PEOPLE = ["Bhushan", "Yawar", "Aniket", "Hemant"];
 export const SOCIAL_MEDIA_PEOPLE = ["Akash", "Aniket", "Sahil", "Satish", "Ansh"];
 
 export function ShootTextCell({
@@ -17,7 +18,7 @@ export function ShootTextCell({
   label,
 }: {
   shootId: string;
-  field: "date" | "dop" | "remarks";
+  field: "date" | "remarks";
   value: string;
   editable: boolean;
   type?: "text" | "date";
@@ -27,12 +28,27 @@ export function ShootTextCell({
   return <EditableText value={value} readOnly={!editable} allowEmpty={allowEmpty} type={type} label={label} onCommit={(v) => updateShoot(shootId, field, v)} />;
 }
 
-export function ShootSocialMediaCell({ shootId, value, editable }: { shootId: string; value: string; editable: boolean }) {
+/** A fixed-list dropdown for DOP or Social media person, falling back to the current value if it's not on the list. */
+export function ShootPersonCell({
+  shootId,
+  field,
+  value,
+  options,
+  editable,
+  label,
+}: {
+  shootId: string;
+  field: "dop" | "socialMediaPerson";
+  value: string;
+  options: string[];
+  editable: boolean;
+  label: string;
+}) {
   const [pending, startTransition] = useTransition();
   if (!editable) {
     return <span>{value || "—"}</span>;
   }
-  const options = SOCIAL_MEDIA_PEOPLE.includes(value) || !value ? SOCIAL_MEDIA_PEOPLE : [value, ...SOCIAL_MEDIA_PEOPLE];
+  const choices = options.includes(value) || !value ? options : [value, ...options];
   return (
     <select
       value={value}
@@ -40,15 +56,15 @@ export function ShootSocialMediaCell({ shootId, value, editable }: { shootId: st
       onChange={(e) => {
         const next = e.target.value;
         startTransition(async () => {
-          const r = await updateShoot(shootId, "socialMediaPerson", next);
+          const r = await updateShoot(shootId, field, next);
           if (!r.ok) alert(r.error);
         });
       }}
       className="h-8 rounded-lg border px-2 text-[11px]"
       style={{ ...inputStyle, opacity: pending ? 0.6 : 1 }}
-      aria-label="Social media person"
+      aria-label={label}
     >
-      {options.map((o) => (
+      {choices.map((o) => (
         <option key={o} value={o}>
           {o}
         </option>
@@ -123,7 +139,7 @@ export function AddShootForm({ cohorts, ips }: { cohorts: { id: string; label: s
   const [cohortId, setCohortId] = useState(cohorts[0]?.id ?? "");
   const [ipId, setIpId] = useState(ips[0]?.id ?? "");
   const [date, setDate] = useState("");
-  const [dop, setDop] = useState("");
+  const [dop, setDop] = useState(DOP_PEOPLE[0]);
   const [socialMediaPerson, setSocialMediaPerson] = useState(SOCIAL_MEDIA_PEOPLE[0]);
   const [remarks, setRemarks] = useState("");
   const [pending, startTransition] = useTransition();
@@ -143,7 +159,7 @@ export function AddShootForm({ cohorts, ips }: { cohorts: { id: string; label: s
           if (!r.ok) alert(r.error);
           else {
             setDate("");
-            setDop("");
+            setDop(DOP_PEOPLE[0]);
             setSocialMediaPerson(SOCIAL_MEDIA_PEOPLE[0]);
             setRemarks("");
           }
@@ -165,15 +181,13 @@ export function AddShootForm({ cohorts, ips }: { cohorts: { id: string; label: s
         ))}
       </select>
       <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 rounded-lg border px-2 text-[11px]" style={inputStyle} aria-label="Date" />
-      <input
-        type="text"
-        value={dop}
-        onChange={(e) => setDop(e.target.value)}
-        placeholder="DOP"
-        className="h-9 rounded-lg border px-2.5 text-[11px] min-w-[120px]"
-        style={inputStyle}
-        aria-label="DOP"
-      />
+      <select value={dop} onChange={(e) => setDop(e.target.value)} className="h-9 rounded-lg border px-2 text-[11px]" style={inputStyle} aria-label="DOP">
+        {DOP_PEOPLE.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+      </select>
       <select
         value={socialMediaPerson}
         onChange={(e) => setSocialMediaPerson(e.target.value)}
