@@ -1,45 +1,84 @@
 import { PageHeader, Card, CardHead, EmptyNote } from "@/components/ui";
-import { LogItBrandCard } from "@/components/LogItBrandCard";
-import { PieceLogControls } from "@/components/PieceLogControls";
-import { getLogItCohortView, getLogItIpView, getFestivals } from "@/lib/queries";
-import { currentMonthKey, monthKeyLabel } from "@/lib/dates";
+import { MonthSwitcher } from "@/components/Switchers";
+import { CalendarBrandCard } from "@/components/CalendarBrandCard";
+import { TaskListRow } from "@/components/TaskListRow";
+import { getCalendarCohortView, getIpTaskList, getFestivals } from "@/lib/queries";
+import { currentMonthKey, monthKeyLabel, yearMonths, yearStartFor, daysFromToday } from "@/lib/dates";
 import { requireUser } from "@/lib/auth";
 
-export default async function LogItPage() {
+function urgency(dueDate: string): { label: string; color: string } {
+  const days = daysFromToday(dueDate);
+  if (days < 0) return { label: "Overdue", color: "var(--status-critical)" };
+  if (days <= 7) return { label: "Due this week", color: "var(--status-warning)" };
+  return { label: "Due later", color: "var(--text-muted)" };
+}
+
+export default async function LogItPage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
   const user = await requireUser();
-  const monthKey = currentMonthKey();
+  const now = currentMonthKey();
+  const params = await searchParams;
+  const monthKey = params.month && /^\d{4}-\d{2}$/.test(params.month) ? params.month : now;
 
-  const showCohortView = user.isAdmin || user.cohortIds.length > 0;
-  const showIpView = user.ipcsIpIds.length > 0;
+  const showCalendar = user.isAdmin || user.cohortIds.length > 0;
+  const showTasks = user.ipcsIpIds.length > 0;
 
-  const [cohortView, ipView, festivals] = await Promise.all([
-    showCohortView ? getLogItCohortView(user.isAdmin ? "all" : user.cohortIds, monthKey) : null,
-    showIpView ? getLogItIpView(user.ipcsIpIds, monthKey) : [],
-    showCohortView ? getFestivals() : Promise.resolve([]),
+  const [calendarView, taskView, festivals] = await Promise.all([
+    showCalendar ? getCalendarCohortView(user.isAdmin ? "all" : user.cohortIds, monthKey) : null,
+    showTasks ? getIpTaskList(user.ipcsIpIds) : [],
+    showCalendar ? getFestivals() : Promise.resolve([]),
   ]);
 
   return (
     <div>
-      <PageHeader title="Log it" subtitle={`${monthKeyLabel(monthKey, "long")} · tap once for every piece you make — everything else is computed`} />
+      <PageHeader
+        title="Log it"
+        subtitle={showCalendar ? "Plan the month's posts once — everyone's dashboard and every IP CS's task list follow from this" : "Your task list, soonest due date first"}
+        right={showCalendar ? <MonthSwitcher monthKeys={yearMonths(yearStartFor(now))} current={monthKey} /> : undefined}
+      />
 
-      {!cohortView && ipView.length === 0 && <EmptyNote>Nothing to log here — this page is for cohort leaders and IP CS.</EmptyNote>}
+      {!calendarView && taskView.length === 0 && <EmptyNote>Nothing to log here — this page is for cohort leaders and IP CS.</EmptyNote>}
 
-      {cohortView &&
-        cohortView.cohorts.map((cohort) => (
+      {taskView.map(({ ip, tasks }) => (
+        <Card key={ip.id} className="mb-5">
+          <CardHead title={ip.name} subtitle={`${tasks.length} not yet live`} />
+          <div>
+            {tasks.map((t) => {
+              const { label, color } = urgency(t.dueDate);
+              return (
+                <TaskListRow
+                  key={t.id}
+                  entryId={t.id}
+                  status={t.status}
+                  brandName={t.brandName}
+                  cohortCode={t.cohortCode}
+                  title={t.title}
+                  postDate={t.postDate}
+                  dueDate={t.dueDate}
+                  urgencyLabel={label}
+                  urgencyColor={color}
+                />
+              );
+            })}
+            {tasks.length === 0 && <EmptyNote>Nothing pending — every planned post for {ip.name} is live.</EmptyNote>}
+          </div>
+        </Card>
+      ))}
+
+      {calendarView &&
+        calendarView.map((cohort) => (
           <div key={cohort.id} className="mb-6">
             <h2 className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
               {cohort.code} · {cohort.leaderName}
             </h2>
             {cohort.brands.map((brand) => (
-              <LogItBrandCard
+              <CalendarBrandCard
                 key={brand.id}
-                monthKey={monthKey}
                 brandId={brand.id}
                 brandName={brand.name}
                 ips={cohort.ips}
-                cellMap={cohortView.cellMap}
-                planned={brand.planned}
+                entries={brand.entries}
                 festivals={festivals}
+                monthKey={monthKey}
               />
             ))}
             {cohort.brands.length === 0 && (
@@ -50,29 +89,11 @@ export default async function LogItPage() {
           </div>
         ))}
 
-      {ipView.map(({ ip, brands }) => (
-        <Card key={ip.id} className="mb-5">
-          <CardHead title={ip.name} subtitle={`${brands.reduce((s, b) => s + b.achieved, 0)} achieved across ${brands.length} brands`} />
-          <div>
-            <div className="flex items-center gap-3 px-5 py-2 border-b text-[9px] font-bold uppercase tracking-wide" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
-              <span className="flex-1">Brand</span>
-              <span className="text-right">Log it</span>
-            </div>
-            {brands.map((b) => (
-              <div key={b.brandId} className="flex items-center gap-3 px-5 py-2.5 border-b last:border-0 flex-wrap" style={{ borderColor: "var(--border)" }}>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-bold truncate">{b.brandName}</div>
-                  <div className="text-[9px]" style={{ color: "var(--text-muted)" }}>
-                    {b.cohortCode} · target {b.target}
-                  </div>
-                </div>
-                <PieceLogControls monthKey={monthKey} brandId={b.brandId} ipId={ip.id} achieved={b.achieved} live={b.live} label={b.brandName} />
-              </div>
-            ))}
-            {brands.length === 0 && <EmptyNote>No brands fixed to this IP yet — set that in Admin → Cohorts &amp; Brands.</EmptyNote>}
-          </div>
-        </Card>
-      ))}
+      {calendarView && (
+        <p className="text-[10.5px] mt-2 text-center" style={{ color: "var(--text-muted)" }}>
+          Plan {monthKeyLabel(monthKey)}&apos;s posts here — switch the month above to get next month&apos;s calendar in early.
+        </p>
+      )}
     </div>
   );
 }

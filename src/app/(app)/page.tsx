@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { PageHeader, Card, CardHead, ProgressBar, KpiTile, Th, Td } from "@/components/ui";
-import { getCohortOverview, getIpOverview, getFestiveNonIpTotals, getMatrix } from "@/lib/queries";
+import { getCohortOverview, getIpOverview, getFestiveNonIpTotals, getMatrix, getOverdueEntries } from "@/lib/queries";
 import { getYearSummary } from "@/lib/targets";
 import { currentMonthKey, monthKeyLabel, yearStartFor } from "@/lib/dates";
 import { requireUser } from "@/lib/auth";
@@ -14,28 +14,22 @@ function statusColor(pct: number): string {
 /**
  * Everyone's shared visibility page: the same numbers for Ishika, IP CS, and
  * L2s alike — one dashboard, not a different view per role. Everything on
- * it is computed from the Piece log; nothing here is typed in.
+ * it is computed from the calendar; nothing here is typed in.
  */
 export default async function DashboardPage() {
   await requireUser();
 
   const monthKey = currentMonthKey();
-  const [cohorts, ips, year, planned, matrix] = await Promise.all([
+  const [cohorts, ips, year, planned, matrix, overdue] = await Promise.all([
     getCohortOverview(monthKey),
     getIpOverview(monthKey),
     getYearSummary(yearStartFor(monthKey)),
     getFestiveNonIpTotals(monthKey),
     getMatrix(monthKey),
+    getOverdueEntries(),
   ]);
   const current = year.current;
   const pct = current && current.target ? Math.min(100, Math.round((current.achieved / current.target) * 100)) : 0;
-
-  const needsAttention = [
-    ...cohorts.map((c) => ({ label: c.code, sub: c.leaderName, pct: c.pct })),
-    ...ips.map((ip) => ({ label: ip.name, sub: "IP", pct: ip.pct })),
-  ]
-    .sort((a, b) => a.pct - b.pct)
-    .slice(0, 5);
 
   return (
     <div>
@@ -71,27 +65,29 @@ export default async function DashboardPage() {
       </div>
 
       <Card className="mb-5">
-        <CardHead title="Needs attention" subtitle="The 5 lowest-completion cohorts and IPs this month" />
+        <CardHead title="Overdue" subtitle="Planned posts whose date has passed and still aren't live" />
         <div>
-          {needsAttention.map((item, i) => (
-            <div key={`${item.label}-${i}`} className="flex items-center justify-between gap-3 px-5 py-3 border-b last:border-0" style={{ borderColor: "var(--border)" }}>
-              <div className="flex items-center gap-2.5">
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: statusColor(item.pct) }} />
-                <div>
-                  <div className="text-[12px] font-bold">{item.label}</div>
+          {overdue.map((item) => (
+            <div key={item.id} className="flex items-center justify-between gap-3 px-5 py-3 border-b last:border-0" style={{ borderColor: "var(--border)" }}>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: "var(--status-critical)" }} />
+                <div className="min-w-0">
+                  <div className="text-[12px] font-bold truncate">
+                    {item.title} <span className="font-normal">· {item.brandName}</span>
+                  </div>
                   <div className="text-[9.5px]" style={{ color: "var(--text-muted)" }}>
-                    {item.sub}
+                    {item.cohortCode} · {item.bucket}
                   </div>
                 </div>
               </div>
-              <div className="text-[13px] font-extrabold tabular-nums" style={{ color: statusColor(item.pct) }}>
-                {item.pct}%
+              <div className="text-[11px] font-bold tabular-nums shrink-0" style={{ color: "var(--status-critical)" }}>
+                was due {item.postDate}
               </div>
             </div>
           ))}
-          {needsAttention.length === 0 && (
+          {overdue.length === 0 && (
             <div className="text-[11px] py-6 text-center" style={{ color: "var(--text-muted)" }}>
-              Nothing to flag yet this month.
+              Nothing overdue right now.
             </div>
           )}
         </div>

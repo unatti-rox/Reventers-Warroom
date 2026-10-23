@@ -9,6 +9,7 @@ import {
   AddIpMemberForm,
   AddPersonForm,
   BrandRow,
+  BufferSettingsForm,
   CohortIpsForm,
   CohortLeaderSelect,
   FestivalRow,
@@ -19,7 +20,7 @@ import {
 } from "@/components/AdminControls";
 import { prisma } from "@/lib/prisma";
 import { requireAdminPage, ROLE_LABEL } from "@/lib/auth";
-import { getFestivals } from "@/lib/queries";
+import { getFestivals, getCalendarBufferDays } from "@/lib/queries";
 import { getYearSummary } from "@/lib/targets";
 import { currentMonthKey, monthKeyLabel, yearLabel, yearStartFor } from "@/lib/dates";
 
@@ -70,10 +71,14 @@ async function TargetsTab({ year }: { year?: string }) {
   const thisYear = yearStartFor(currentMonthKey());
   const requested = Number(year);
   const startYear = Number.isInteger(requested) && requested > 2000 && requested < 2100 ? requested : thisYear;
-  const [summary, settings] = await Promise.all([getYearSummary(startYear), prisma.monthSetting.findMany()]);
+  const [summary, settings, bufferDays] = await Promise.all([getYearSummary(startYear), prisma.monthSetting.findMany(), getCalendarBufferDays()]);
   const byMonth = new Map(settings.map((s) => [s.monthKey, s]));
   return (
     <>
+      <Card className="mb-5">
+        <CardHead title="Calendar buffer" subtitle="How many days before a post's date production is due. Drives every IP CS's task list." />
+        <BufferSettingsForm bufferDays={bufferDays} />
+      </Card>
       <Card className="mb-5">
         <CardHead title="IP target rule" subtitle="Every month's IP base = this base + the amount below for each brand added after launch. Applies to every month without its own base." />
         <TargetSettingsForm baseMonthly={summary.settings.baseMonthly} perBrand={summary.settings.perBrand} />

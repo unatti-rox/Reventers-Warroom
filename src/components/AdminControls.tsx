@@ -14,6 +14,7 @@ import {
   saveMonthSetting,
   saveTargetSettings,
   setBrandArchived,
+  setCalendarBuffer,
   setCohortIps,
   setCohortLeader,
   updateBrand,
@@ -82,6 +83,26 @@ export function TargetSettingsForm({ baseMonthly, perBrand }: { baseMonthly: num
 
 export function MonthOverrideCell({ monthKey, field, value }: { monthKey: string; field: "baseOverride" | "achievedOverride"; value: number | null }) {
   return <EditableNumber value={value} allowEmpty placeholder="—  set" label={field} onCommit={(v) => saveMonthSetting(monthKey, field, v)} />;
+}
+
+export function BufferSettingsForm({ bufferDays }: { bufferDays: number }) {
+  const [days, setDays] = useState(String(bufferDays));
+  const [pending, go] = useAction();
+  return (
+    <form
+      className="flex flex-wrap items-end gap-3 p-5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        go(() => setCalendarBuffer(Number(days)), () => alert("Saved"));
+      }}
+    >
+      <label className="text-[11px]">
+        <span className="block font-semibold mb-1">Days before a post&apos;s date production is due</span>
+        <input type="number" min={1} value={days} onChange={(e) => setDays(e.target.value)} className={`${control} w-28`} style={inputStyle} />
+      </label>
+      <Button pending={pending}>Save</Button>
+    </form>
+  );
 }
 
 /* ---------------- COHORTS & BRANDS ---------------- */

@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { actionAdmin, actionUser, createSession, destroySession, getCurrentUser, type CurrentUser } from "@/lib/auth";
 import { hashPassword, temporaryPassword, verifyPassword } from "@/lib/password";
 import { currentMonthKey } from "@/lib/dates";
-import { AppRole, PersonRole, PlanFormat, PieceKind } from "@/generated/prisma/enums";
+import { AppRole, PersonRole, PlanFormat, EntryKind, EntryStatus } from "@/generated/prisma/enums";
 
 /** Actions return a message instead of throwing: production builds hide thrown error text. */
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -102,7 +102,7 @@ export async function changePassword(_prev: ActionResult | null, form: FormData)
   redirect("/");
 }
 
-/* ---------------- BRAND × IP MATRIX ---------------- */
+/* ---------------- CALENDAR (the one input surface) ---------------- */
 
 /** True once an admin has fixed this IP to this brand's cohort (set in Admin → Cohorts & Brands). */
 async function assertIpPairedWithBrand(brandId: string, ipId: string) {
@@ -111,112 +111,103 @@ async function assertIpPairedWithBrand(brandId: string, ipId: string) {
   if (!paired) refuse("This IP isn't paired with that brand's cohort yet — set that in Admin.");
 }
 
-export async function setBrandIpTarget(monthKey: string, brandId: string, ipId: string, value: number) {
-  return run(async () => {
-    const user = await actionUser();
-    checkMonth(monthKey);
-    const v = count(value);
-    if (!user.isAdmin) {
-      const cohortId = await brandCohortId(brandId);
-      if (!user.cohortIds.includes(cohortId)) refuse("Only this brand's cohort leader sets its targets.");
-    }
-    await assertIpPairedWithBrand(brandId, ipId);
-    await prisma.brandIpMonth.upsert({
-      where: { monthKey_brandId_ipId: { monthKey, brandId, ipId } },
-      update: { target: v },
-      create: { monthKey, brandId, ipId, target: v },
-    });
-  });
-}
-
-async function assertCanLogPiece(user: CurrentUser, brandId: string, ipId: string) {
+async function assertCanTouchEntry(user: CurrentUser, brandId: string, ipId: string | null) {
   if (user.isAdmin) return;
   const cohortId = await brandCohortId(brandId);
-  if (user.cohortIds.includes(cohortId) || user.ipcsIpIds.includes(ipId)) return;
-  refuse("Only this brand's cohort leader or the IP's IP CS can log it.");
+  if (user.cohortIds.includes(cohortId)) return;
+  if (ipId && user.ipcsIpIds.includes(ipId)) return;
+  refuse("Only this brand's cohort leader or the IP's IP CS can do that.");
 }
 
-/** The core "Log it" action: one piece of IP content, made just now. No numbers to type. */
-export async function logPiece(monthKey: string, brandId: string, ipId: string) {
+/** Plans one post: the only act of "input" in the whole app. Pass ipId for REGULAR, festivalId for FESTIVAL, or leave both unset for NON_IP (title alone describes it). Cohort leaders only — this is the monthly plan, not day-to-day logging. */
+export async function addCalendarEntry(input: {
+  brandId: string;
+  kind: EntryKind;
+  ipId?: string;
+  festivalId?: string;
+  title: string;
+  format?: PlanFormat;
+  postDate: string;
+}) {
   return run(async () => {
     const user = await actionUser();
-    checkMonth(monthKey);
-    await assertCanLogPiece(user, brandId, ipId);
-    await assertIpPairedWithBrand(brandId, ipId);
-    await prisma.piece.create({ data: { monthKey, brandId, ipId, kind: PieceKind.REGULAR, loggedById: user.id } });
-  });
-}
+    await assertLeadsBrand(user, input.brandId);
+    if (!DAY.test(input.postDate)) refuse("Pick a valid post date.");
+    const title = text(input.title, "a short title");
+    const monthKey = input.postDate.slice(0, 7);
 
-/** Marks the oldest not-yet-live piece for this brand + IP + month as live. */
-export async function markOneLive(monthKey: string, brandId: string, ipId: string) {
-  return run(async () => {
-    const user = await actionUser();
-    await assertCanLogPiece(user, brandId, ipId);
-    const piece = await prisma.piece.findFirst({
-      where: { monthKey, brandId, ipId, kind: PieceKind.REGULAR, live: false },
-      orderBy: { createdAt: "asc" },
-    });
-    if (!piece) refuse("Nothing logged yet to mark live.");
-    await prisma.piece.update({ where: { id: piece.id }, data: { live: true } });
-  });
-}
-
-/** Removes the most recently logged piece for this brand + IP + month - for fixing an accidental tap. */
-export async function undoLastPiece(monthKey: string, brandId: string, ipId: string) {
-  return run(async () => {
-    const user = await actionUser();
-    await assertCanLogPiece(user, brandId, ipId);
-    const piece = await prisma.piece.findFirst({ where: { monthKey, brandId, ipId, kind: PieceKind.REGULAR }, orderBy: { createdAt: "desc" } });
-    if (!piece) refuse("Nothing to undo.");
-    await prisma.piece.delete({ where: { id: piece.id } });
-  });
-}
-
-/* ---------------- FESTIVE & NON-IP (logged the same way, into the same Piece log) ---------------- */
-
-function plannedWhere(kind: "FESTIVAL" | "NON_IP", detail: string) {
-  return kind === "FESTIVAL" ? { festivalId: detail } : { workLabel: detail };
-}
-
-/** `detail` is a festival id for FESTIVAL, or a free-text label (e.g. "Teaser reel") for NON_IP. */
-export async function logPlannedPiece(monthKey: string, brandId: string, kind: "FESTIVAL" | "NON_IP", detail: string, format: PlanFormat) {
-  return run(async () => {
-    const user = await actionUser();
-    checkMonth(monthKey);
-    await assertLeadsBrand(user, brandId);
-    if (kind === "FESTIVAL") {
-      if (!(await prisma.festival.findUnique({ where: { id: detail } }))) refuse("Pick a festival.");
-      await prisma.piece.create({ data: { monthKey, brandId, kind: PieceKind.FESTIVAL, festivalId: detail, format, loggedById: user.id } });
+    if (input.kind === EntryKind.REGULAR) {
+      if (!input.ipId) refuse("Pick an IP.");
+      await assertIpPairedWithBrand(input.brandId, input.ipId);
+      await prisma.calendarEntry.create({
+        data: { monthKey, brandId: input.brandId, kind: EntryKind.REGULAR, ipId: input.ipId, title, postDate: input.postDate, createdById: user.id },
+      });
+    } else if (input.kind === EntryKind.FESTIVAL) {
+      if (!input.festivalId || !(await prisma.festival.findUnique({ where: { id: input.festivalId } }))) refuse("Pick a festival.");
+      await prisma.calendarEntry.create({
+        data: { monthKey, brandId: input.brandId, kind: EntryKind.FESTIVAL, festivalId: input.festivalId, title, format: input.format, postDate: input.postDate, createdById: user.id },
+      });
     } else {
-      const workLabel = text(detail, "the non-IP work");
-      await prisma.piece.create({ data: { monthKey, brandId, kind: PieceKind.NON_IP, workLabel, format, loggedById: user.id } });
+      await prisma.calendarEntry.create({
+        data: { monthKey, brandId: input.brandId, kind: EntryKind.NON_IP, title, format: input.format, postDate: input.postDate, createdById: user.id },
+      });
     }
   });
 }
 
-export async function markPlannedLive(monthKey: string, brandId: string, kind: "FESTIVAL" | "NON_IP", detail: string, format: PlanFormat) {
+export async function removeCalendarEntry(entryId: string) {
   return run(async () => {
     const user = await actionUser();
-    await assertLeadsBrand(user, brandId);
-    const piece = await prisma.piece.findFirst({
-      where: { monthKey, brandId, kind: kind === "FESTIVAL" ? PieceKind.FESTIVAL : PieceKind.NON_IP, format, live: false, ...plannedWhere(kind, detail) },
-      orderBy: { createdAt: "asc" },
-    });
-    if (!piece) refuse("Nothing logged yet to mark live.");
-    await prisma.piece.update({ where: { id: piece.id }, data: { live: true } });
+    const entry = await prisma.calendarEntry.findUnique({ where: { id: entryId } });
+    if (!entry) return;
+    await assertLeadsBrand(user, entry.brandId);
+    await prisma.calendarEntry.delete({ where: { id: entryId } });
   });
 }
 
-export async function undoPlannedPiece(monthKey: string, brandId: string, kind: "FESTIVAL" | "NON_IP", detail: string, format: PlanFormat) {
+/** Marks an entry produced (PENDING → DONE). */
+export async function markEntryDone(entryId: string) {
   return run(async () => {
     const user = await actionUser();
-    await assertLeadsBrand(user, brandId);
-    const piece = await prisma.piece.findFirst({
-      where: { monthKey, brandId, kind: kind === "FESTIVAL" ? PieceKind.FESTIVAL : PieceKind.NON_IP, format, ...plannedWhere(kind, detail) },
-      orderBy: { createdAt: "desc" },
-    });
-    if (!piece) refuse("Nothing to undo.");
-    await prisma.piece.delete({ where: { id: piece.id } });
+    const entry = await prisma.calendarEntry.findUnique({ where: { id: entryId } });
+    if (!entry) refuse("That entry is already gone.");
+    await assertCanTouchEntry(user, entry.brandId, entry.ipId);
+    if (entry.status !== EntryStatus.PENDING) refuse("Already marked done.");
+    await prisma.calendarEntry.update({ where: { id: entryId }, data: { status: EntryStatus.DONE } });
+  });
+}
+
+/** Marks an entry live (DONE or PENDING → LIVE). */
+export async function markEntryLive(entryId: string) {
+  return run(async () => {
+    const user = await actionUser();
+    const entry = await prisma.calendarEntry.findUnique({ where: { id: entryId } });
+    if (!entry) refuse("That entry is already gone.");
+    await assertCanTouchEntry(user, entry.brandId, entry.ipId);
+    if (entry.status === EntryStatus.LIVE) refuse("Already live.");
+    await prisma.calendarEntry.update({ where: { id: entryId }, data: { status: EntryStatus.LIVE } });
+  });
+}
+
+/** Steps an entry's status back one notch (LIVE → DONE → PENDING) - for fixing an accidental tap. */
+export async function undoEntryStatus(entryId: string) {
+  return run(async () => {
+    const user = await actionUser();
+    const entry = await prisma.calendarEntry.findUnique({ where: { id: entryId } });
+    if (!entry) refuse("That entry is already gone.");
+    await assertCanTouchEntry(user, entry.brandId, entry.ipId);
+    if (entry.status === EntryStatus.PENDING) refuse("Nothing to undo.");
+    const prev = entry.status === EntryStatus.LIVE ? EntryStatus.DONE : EntryStatus.PENDING;
+    await prisma.calendarEntry.update({ where: { id: entryId }, data: { status: prev } });
+  });
+}
+
+/** How many days before a post's date production is due — set once in Admin. */
+export async function setCalendarBuffer(days: number) {
+  return run(async () => {
+    await actionAdmin();
+    const v = count(days);
+    await prisma.appSetting.upsert({ where: { key: "calendar.bufferDays" }, update: { value: String(v) }, create: { key: "calendar.bufferDays", value: String(v) } });
   });
 }
 

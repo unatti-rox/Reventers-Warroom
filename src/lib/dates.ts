@@ -1,6 +1,3 @@
-export const WEEKS = ["W1", "W2", "W3", "W4"] as const;
-export type WeekKey = (typeof WEEKS)[number];
-
 /** The team works in India; every "today" / "this month" is in India time. */
 export const TIME_ZONE = "Asia/Kolkata";
 
@@ -29,17 +26,24 @@ export function currentMonthKey(): string {
   return todayDateStr().slice(0, 7);
 }
 
-/** W1 = days 1-7, W2 = 8-14, W3 = 15-21, W4 = 22 to month end (see Weekly Rotation). */
-export function currentWeekKey(): WeekKey {
-  const day = Number(todayDateStr().slice(8, 10));
-  if (day <= 7) return "W1";
-  if (day <= 14) return "W2";
-  if (day <= 21) return "W3";
-  return "W4";
-}
-
 export function monthKeyFromDateStr(dateStr: string): string {
   return dateStr.slice(0, 7);
+}
+
+/** Adds (or, with a negative n, subtracts) days from a "YYYY-MM-DD" date string. */
+export function addDays(dateStr: string, n: number): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day + n));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+/** Whole days from today to a "YYYY-MM-DD" date (negative if it's in the past). */
+export function daysFromToday(dateStr: string): number {
+  const today = todayDateStr();
+  const [ty, tm, td] = today.split("-").map(Number);
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const msPerDay = 86400_000;
+  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(ty, tm - 1, td)) / msPerDay);
 }
 
 export function monthKeyLabel(monthKey: string, style: "long" | "short" = "long"): string {

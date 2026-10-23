@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { PieceKind } from "@/generated/prisma/enums";
+import { EntryKind, EntryStatus } from "@/generated/prisma/enums";
 import { currentMonthKey, yearMonths } from "@/lib/dates";
 
 export const DEFAULT_BASE = 192;
@@ -51,34 +51,34 @@ export async function getYearSummary(startYear: number) {
     getTargetSettings(),
     prisma.brand.findMany({ select: { addedMonthKey: true, archivedMonthKey: true } }),
     prisma.monthSetting.findMany({ where: { monthKey: { gte: first, lte: last } } }),
-    prisma.piece.groupBy({
+    prisma.calendarEntry.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: PieceKind.REGULAR },
+      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.REGULAR, status: { not: EntryStatus.PENDING } },
       _count: { _all: true },
     }),
-    prisma.piece.groupBy({
+    prisma.calendarEntry.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: PieceKind.REGULAR, live: true },
+      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.REGULAR, status: EntryStatus.LIVE },
       _count: { _all: true },
     }),
-    prisma.piece.groupBy({
+    prisma.calendarEntry.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: PieceKind.FESTIVAL },
+      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.FESTIVAL, status: { not: EntryStatus.PENDING } },
       _count: { _all: true },
     }),
-    prisma.piece.groupBy({
+    prisma.calendarEntry.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: PieceKind.FESTIVAL, live: true },
+      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.FESTIVAL, status: EntryStatus.LIVE },
       _count: { _all: true },
     }),
-    prisma.piece.groupBy({
+    prisma.calendarEntry.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: PieceKind.NON_IP },
+      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.NON_IP, status: { not: EntryStatus.PENDING } },
       _count: { _all: true },
     }),
-    prisma.piece.groupBy({
+    prisma.calendarEntry.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: PieceKind.NON_IP, live: true },
+      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.NON_IP, status: EntryStatus.LIVE },
       _count: { _all: true },
     }),
   ]);

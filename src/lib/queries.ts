@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { PersonRole, PieceKind, type PlanFormat } from "@/generated/prisma/enums";
-import { currentMonthKey } from "@/lib/dates";
+import { PersonRole, EntryKind, EntryStatus, type PlanFormat } from "@/generated/prisma/enums";
+import { currentMonthKey, todayDateStr, addDays } from "@/lib/dates";
 
 /** Brands that count in a given month (not archived before it). */
 function activeIn(monthKey: string) {
@@ -39,74 +39,49 @@ export function cohortLabel(c: { code: string; leaderName: string }) {
   return `${c.code} · ${c.leaderName}`;
 }
 
-/** All logged REGULAR pieces for a month: each tap of "Log it", plus whether it's live. */
-async function getPieces(monthKey: string) {
-  return prisma.piece.findMany({
-    where: { monthKey, kind: PieceKind.REGULAR },
-    select: { brandId: true, ipId: true, live: true },
-  });
+type Summary = { target: number; achieved: number; live: number; pct: number };
+
+/** Target = how many entries were planned; achieved = planned pieces produced or live; live = posted. No numbers typed anywhere - this is pure counting. */
+function summarize(entries: { status: EntryStatus }[]): Summary {
+  const target = entries.length;
+  const achieved = entries.filter((e) => e.status !== EntryStatus.PENDING).length;
+  const live = entries.filter((e) => e.status === EntryStatus.LIVE).length;
+  return { target, achieved, live, pct: target ? Math.min(100, Math.round((achieved / target) * 100)) : 0 };
 }
 
-/** Each cohort's IP delivery for the month: target from the matrix, achieved/live counted from logged pieces. */
+/** Each cohort's IP delivery for the month, from the calendar. */
 export async function getCohortOverview(monthKey: string) {
-  const [cohorts, targets, pieces] = await Promise.all([
+  const [cohorts, entries] = await Promise.all([
     getCohorts(monthKey),
-    prisma.brandIpMonth.findMany({ where: { monthKey }, select: { brandId: true, target: true } }),
-    getPieces(monthKey),
+    prisma.calendarEntry.findMany({ where: { monthKey, kind: EntryKind.REGULAR }, select: { brandId: true, status: true } }),
   ]);
   return cohorts.map((cohort) => {
     const brandIds = new Set(cohort.brands.map((b) => b.id));
-    const target = targets.filter((t) => brandIds.has(t.brandId)).reduce((s, t) => s + t.target, 0);
-    const mine = pieces.filter((p) => brandIds.has(p.brandId));
-    const achieved = mine.length;
-    const live = mine.filter((p) => p.live).length;
-    return {
-      id: cohort.id,
-      code: cohort.code,
-      leaderName: cohort.leaderName,
-      brandCount: cohort.brands.length,
-      target,
-      achieved,
-      live,
-      pct: target ? Math.min(100, Math.round((achieved / target) * 100)) : 0,
-    };
+    const mine = entries.filter((e) => brandIds.has(e.brandId));
+    return { id: cohort.id, code: cohort.code, leaderName: cohort.leaderName, brandCount: cohort.brands.length, ...summarize(mine) };
   });
 }
 
-/** Each IP's delivery for the month: target from the matrix, achieved/live counted from logged pieces. */
+/** Each IP's delivery for the month, from the calendar. */
 export async function getIpOverview(monthKey: string) {
-  const [ips, targets, pieces] = await Promise.all([
+  const [ips, entries] = await Promise.all([
     prisma.ip.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
-    prisma.brandIpMonth.findMany({ where: { monthKey }, select: { ipId: true, target: true } }),
-    getPieces(monthKey),
+    prisma.calendarEntry.findMany({ where: { monthKey, kind: EntryKind.REGULAR }, select: { ipId: true, status: true } }),
   ]);
   return ips.map((ip) => {
-    const target = targets.filter((t) => t.ipId === ip.id).reduce((s, t) => s + t.target, 0);
-    const mine = pieces.filter((p) => p.ipId === ip.id);
-    const achieved = mine.length;
-    const live = mine.filter((p) => p.live).length;
-    return {
-      id: ip.id,
-      name: ip.name,
-      target,
-      achieved,
-      live,
-      pct: target ? Math.min(100, Math.round((achieved / target) * 100)) : 0,
-    };
+    const mine = entries.filter((e) => e.ipId === ip.id);
+    return { id: ip.id, name: ip.name, ...summarize(mine) };
   });
 }
 
-/** Festive & Non-IP totals for the month (now just another kind of logged piece). */
+/** Festive & Non-IP totals for the month (the same calendar, just the other two kinds). */
 export async function getFestiveNonIpTotals(monthKey: string) {
-  const rows = await prisma.piece.findMany({
-    where: { monthKey, kind: { in: [PieceKind.FESTIVAL, PieceKind.NON_IP] } },
-    select: { kind: true, live: true },
+  const rows = await prisma.calendarEntry.findMany({
+    where: { monthKey, kind: { in: [EntryKind.FESTIVAL, EntryKind.NON_IP] } },
+    select: { kind: true, status: true },
   });
-  const sumBy = (kind: PieceKind) => {
-    const mine = rows.filter((r) => r.kind === kind);
-    return { achieved: mine.length, live: mine.filter((r) => r.live).length };
-  };
-  return { festive: sumBy(PieceKind.FESTIVAL), nonIp: sumBy(PieceKind.NON_IP) };
+  const sumBy = (kind: EntryKind) => summarize(rows.filter((r) => r.kind === kind));
+  return { festive: sumBy(EntryKind.FESTIVAL), nonIp: sumBy(EntryKind.NON_IP) };
 }
 
 /** Every IP with who handles it, and which cohorts it's fixed to. */
@@ -134,82 +109,66 @@ export async function getIpTeams() {
 
 type Cell = { target: number; achieved: number; live: number };
 
-/** Combines a month's set targets with its logged-piece counts into one brand+IP cell map. */
-function buildCellMap(
-  targets: { brandId: string; ipId: string; target: number }[],
-  pieces: { brandId: string; ipId: string | null; live: boolean }[],
-) {
-  const cellMap = new Map<string, Cell>();
-  for (const t of targets) {
-    cellMap.set(`${t.brandId}:${t.ipId}`, { target: t.target, achieved: 0, live: 0 });
-  }
-  for (const p of pieces) {
-    if (!p.ipId) continue;
-    const key = `${p.brandId}:${p.ipId}`;
-    const cell = cellMap.get(key) ?? { target: 0, achieved: 0, live: 0 };
-    cell.achieved += 1;
-    if (p.live) cell.live += 1;
-    cellMap.set(key, cell);
-  }
-  return cellMap;
-}
-
 /** The full brand × IP read view, for the Dashboard's drill-down table. */
 export async function getMatrix(monthKey: string) {
-  const [cohorts, ips, targets, pieces] = await Promise.all([
+  const [cohorts, ips, entries] = await Promise.all([
     getCohorts(monthKey),
     prisma.ip.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
-    prisma.brandIpMonth.findMany({ where: { monthKey }, select: { brandId: true, ipId: true, target: true } }),
-    getPieces(monthKey),
+    prisma.calendarEntry.findMany({ where: { monthKey, kind: EntryKind.REGULAR }, select: { brandId: true, ipId: true, status: true } }),
   ]);
-  const cellMap = buildCellMap(targets, pieces);
+  const cellMap = new Map<string, Cell>();
+  for (const e of entries) {
+    if (!e.ipId) continue;
+    const key = `${e.brandId}:${e.ipId}`;
+    const cell = cellMap.get(key) ?? { target: 0, achieved: 0, live: 0 };
+    cell.target += 1;
+    if (e.status !== EntryStatus.PENDING) cell.achieved += 1;
+    if (e.status === EntryStatus.LIVE) cell.live += 1;
+    cellMap.set(key, cell);
+  }
   return { cohorts, ips, cellMap };
 }
 
-/* ---------------- LOG IT (the one input surface) ---------------- */
-
-export type PlannedRow = {
-  brandId: string;
-  kind: "FESTIVAL" | "NON_IP";
-  detail: string;
-  label: string;
-  format: PlanFormat;
-  achieved: number;
-  live: number;
-};
-
-/** Festive & Non-IP pieces for a set of brands, grouped into rows with achieved/live counts. */
-async function getPlannedRows(brandIds: string[], monthKey: string): Promise<PlannedRow[]> {
-  if (brandIds.length === 0) return [];
-  const [festivals, pieces] = await Promise.all([
-    getFestivals(),
-    prisma.piece.findMany({
-      where: { monthKey, brandId: { in: brandIds }, kind: { in: [PieceKind.FESTIVAL, PieceKind.NON_IP] } },
-      select: { brandId: true, kind: true, festivalId: true, workLabel: true, format: true, live: true },
-    }),
-  ]);
-  const festivalName = new Map(festivals.map((f) => [f.id, f.name]));
-  const groups = new Map<string, PlannedRow>();
-  for (const p of pieces) {
-    const kind = p.kind === PieceKind.FESTIVAL ? "FESTIVAL" : "NON_IP";
-    const detail = kind === "FESTIVAL" ? (p.festivalId ?? "") : (p.workLabel ?? "");
-    const format = p.format!;
-    const key = `${p.brandId}:${kind}:${detail}:${format}`;
-    const label = kind === "FESTIVAL" ? (festivalName.get(detail) ?? detail) : detail;
-    const row = groups.get(key) ?? { brandId: p.brandId, kind, detail, label, format, achieved: 0, live: 0 };
-    row.achieved += 1;
-    if (p.live) row.live += 1;
-    groups.set(key, row);
-  }
-  return Array.from(groups.values());
+/** Entries whose post date has passed but aren't live yet - the sharpest "needs attention" signal there is. */
+export async function getOverdueEntries(limit = 8) {
+  const rows = await prisma.calendarEntry.findMany({
+    where: { postDate: { lt: todayDateStr() }, status: { not: EntryStatus.LIVE } },
+    include: { brand: { include: { cohort: true } }, ip: true, festival: true },
+    orderBy: { postDate: "asc" },
+    take: limit,
+  });
+  return rows.map((e) => ({
+    id: e.id,
+    brandName: e.brand.name,
+    cohortCode: e.brand.cohort.code,
+    bucket: e.kind === EntryKind.REGULAR ? (e.ip?.name ?? "") : e.kind === EntryKind.FESTIVAL ? (e.festival?.name ?? "Festival") : "Non-IP",
+    title: e.title,
+    postDate: e.postDate,
+    status: e.status,
+  }));
 }
 
+/* ---------------- CALENDAR (the one input surface) ---------------- */
+
+export type CalendarEntryRow = {
+  id: string;
+  kind: EntryKind;
+  ipId: string | null;
+  ipName: string | null;
+  festivalId: string | null;
+  festivalName: string | null;
+  title: string;
+  format: PlanFormat | null;
+  postDate: string;
+  status: EntryStatus;
+};
+
 /**
- * The cohort-leader "Log it" view: their own brands × their cohort's fixed
- * IPs (target + achieved + live), plus each brand's Festive/Non-IP pieces.
- * Pass "all" for admins, who can log for any cohort.
+ * The cohort-leader Calendar view: their own brands, each with every
+ * planned entry for the viewed month (any kind) and a form to add more.
+ * Pass "all" for admins, who can plan for any cohort.
  */
-export async function getLogItCohortView(cohortIds: string[] | "all", monthKey: string) {
+export async function getCalendarCohortView(cohortIds: string[] | "all", monthKey: string) {
   const cohorts = await prisma.cohort.findMany({
     where: cohortIds === "all" ? {} : { id: { in: cohortIds } },
     orderBy: { code: "asc" },
@@ -219,51 +178,92 @@ export async function getLogItCohortView(cohortIds: string[] | "all", monthKey: 
     },
   });
   const brandIds = cohorts.flatMap((c) => c.brands.map((b) => b.id));
-  const [targets, pieces, planned] = await Promise.all([
-    prisma.brandIpMonth.findMany({ where: { monthKey, brandId: { in: brandIds } }, select: { brandId: true, ipId: true, target: true } }),
-    prisma.piece.findMany({ where: { monthKey, brandId: { in: brandIds }, kind: PieceKind.REGULAR }, select: { brandId: true, ipId: true, live: true } }),
-    getPlannedRows(brandIds, monthKey),
-  ]);
-  const cellMap = buildCellMap(targets, pieces);
-  return {
-    cohorts: cohorts.map((cohort) => ({
-      id: cohort.id,
-      code: cohort.code,
-      leaderName: cohort.leaderName,
-      ips: cohort.ips,
-      brands: cohort.brands.map((b) => ({
-        id: b.id,
-        name: b.name,
-        planned: planned.filter((p) => p.brandId === b.id),
-      })),
-    })),
-    cellMap,
-  };
+  const entries =
+    brandIds.length === 0
+      ? []
+      : await prisma.calendarEntry.findMany({
+          where: { monthKey, brandId: { in: brandIds } },
+          include: { ip: true, festival: true },
+          orderBy: { postDate: "asc" },
+        });
+  const rowsByBrand = new Map<string, CalendarEntryRow[]>();
+  for (const e of entries) {
+    const row: CalendarEntryRow = {
+      id: e.id,
+      kind: e.kind,
+      ipId: e.ipId,
+      ipName: e.ip?.name ?? null,
+      festivalId: e.festivalId,
+      festivalName: e.festival?.name ?? null,
+      title: e.title,
+      format: e.format,
+      postDate: e.postDate,
+      status: e.status,
+    };
+    const list = rowsByBrand.get(e.brandId) ?? [];
+    list.push(row);
+    rowsByBrand.set(e.brandId, list);
+  }
+  return cohorts.map((cohort) => ({
+    id: cohort.id,
+    code: cohort.code,
+    leaderName: cohort.leaderName,
+    ips: cohort.ips,
+    brands: cohort.brands.map((b) => ({ id: b.id, name: b.name, entries: rowsByBrand.get(b.id) ?? [] })),
+  }));
 }
 
-/** The IP CS "Log it" view: their own IP(s) × the brands of the cohorts fixed to them. No target editing, no Festive/Non-IP. */
-export async function getLogItIpView(ipIds: string[], monthKey: string) {
+export async function getCalendarBufferDays() {
+  const row = await prisma.appSetting.findUnique({ where: { key: "calendar.bufferDays" } });
+  const v = Number(row?.value);
+  return Number.isFinite(v) && v > 0 ? v : 8;
+}
+
+export type TaskListEntry = {
+  id: string;
+  brandId: string;
+  brandName: string;
+  cohortCode: string;
+  title: string;
+  postDate: string;
+  dueDate: string;
+  status: EntryStatus;
+};
+
+/**
+ * The IP CS task list: every not-yet-live REGULAR entry for their IP(s),
+ * due date = post date minus the buffer, soonest first. This is the list
+ * that answers "what should I focus on this week" without anyone assigning it.
+ */
+export async function getIpTaskList(ipIds: string[]) {
   if (ipIds.length === 0) return [];
-  const [ips, pieces, targets] = await Promise.all([
-    prisma.ip.findMany({
-      where: { id: { in: ipIds } },
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      include: { cohorts: { include: { brands: { where: activeIn(monthKey), orderBy: { name: "asc" } } } } },
-    }),
-    prisma.piece.findMany({ where: { monthKey, ipId: { in: ipIds }, kind: PieceKind.REGULAR }, select: { brandId: true, ipId: true, live: true } }),
-    prisma.brandIpMonth.findMany({ where: { monthKey, ipId: { in: ipIds } }, select: { brandId: true, ipId: true, target: true } }),
-  ]);
-  return ips.map((ip) => {
-    const brands = ip.cohorts.flatMap((c) => c.brands.map((b) => ({ brandId: b.id, brandName: b.name, cohortCode: c.code })));
-    return {
-      ip: { id: ip.id, name: ip.name },
-      brands: brands.map((b) => {
-        const mine = pieces.filter((p) => p.ipId === ip.id && p.brandId === b.brandId);
-        const target = targets.find((t) => t.ipId === ip.id && t.brandId === b.brandId)?.target ?? 0;
-        return { ...b, target, achieved: mine.length, live: mine.filter((p) => p.live).length };
-      }),
-    };
+  const bufferDays = await getCalendarBufferDays();
+  const entries = await prisma.calendarEntry.findMany({
+    where: { ipId: { in: ipIds }, kind: EntryKind.REGULAR, status: { not: EntryStatus.LIVE } },
+    include: { brand: { include: { cohort: true } }, ip: true },
+    orderBy: { postDate: "asc" },
   });
+  const byIp = new Map<string, TaskListEntry[]>();
+  for (const e of entries) {
+    const row: TaskListEntry = {
+      id: e.id,
+      brandId: e.brandId,
+      brandName: e.brand.name,
+      cohortCode: e.brand.cohort.code,
+      title: e.title,
+      postDate: e.postDate,
+      dueDate: addDays(e.postDate, -bufferDays),
+      status: e.status,
+    };
+    const list = byIp.get(e.ipId!) ?? [];
+    list.push(row);
+    byIp.set(e.ipId!, list);
+  }
+  const ips = await prisma.ip.findMany({ where: { id: { in: ipIds } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
+  return ips.map((ip) => ({
+    ip: { id: ip.id, name: ip.name },
+    tasks: (byIp.get(ip.id) ?? []).sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
+  }));
 }
 
 /* ---------------- FESTIVE & NON-IP ---------------- */

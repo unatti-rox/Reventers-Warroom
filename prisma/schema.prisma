@@ -33,12 +33,19 @@ enum PlanFormat {
   GIF
 }
 
-/// What kind of piece was logged: ordinary IP output, a festival piece, or
+/// What kind of entry this is: ordinary IP output, a festival piece, or
 /// one-off non-IP work.
-enum PieceKind {
+enum EntryKind {
   REGULAR
   FESTIVAL
   NON_IP
+}
+
+/// Where a calendar entry is in its life: planned, produced, posted.
+enum EntryStatus {
+  PENDING
+  DONE
+  LIVE
 }
 
 model Cohort {
@@ -66,10 +73,9 @@ model Brand {
   /// Month from which the brand no longer counts (null = active).
   archivedMonthKey String?
 
-  cohort   Cohort         @relation(fields: [cohortId], references: [id], onDelete: Cascade)
-  ipMonths BrandIpMonth[]
-  pieces   Piece[]
-  shoots   Shoot[]
+  cohort          Cohort          @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  calendarEntries CalendarEntry[]
+  shoots          Shoot[]
 
   @@unique([cohortId, name])
   @@map("Client")
@@ -80,12 +86,11 @@ model Ip {
   name      String @unique
   sortOrder Int    @default(0)
 
-  assignments PersonAssignment[]
-  brandMonths BrandIpMonth[]
-  pieces      Piece[]
-  shoots      Shoot[]
+  assignments     PersonAssignment[]
+  calendarEntries CalendarEntry[]
+  shoots          Shoot[]
   /// The cohorts fixed to this IP — set once in Admin, not rotated weekly.
-  cohorts     Cohort[]
+  cohorts         Cohort[]
 }
 
 model Person {
@@ -98,10 +103,10 @@ model Person {
   active             Boolean  @default(true)
   createdAt          DateTime @default(now())
 
-  assignments  PersonAssignment[]
-  loggedPieces Piece[]
-  sessions     Session[]
-  leadsCohorts Cohort[]           @relation("CohortLeader")
+  assignments    PersonAssignment[]
+  createdEntries CalendarEntry[]
+  sessions       Session[]
+  leadsCohorts   Cohort[]           @relation("CohortLeader")
 }
 
 model Session {
@@ -126,49 +131,38 @@ model PersonAssignment {
   @@unique([personId, ipId, role])
 }
 
-/// The one number someone still sets ahead of time: how much of this IP a
-/// brand needs this month. Achieved/live are no longer stored here - they're
-/// counted from Piece, logged one at a time as the work actually happens.
-model BrandIpMonth {
-  id        String   @id @default(cuid())
-  monthKey  String
-  brandId   String
-  ipId      String
-  target    Int      @default(0)
-  updatedAt DateTime @updatedAt
+/// One planned, named post: the only act of "input" in the whole app. A
+/// brand's cohort leader plans the month by adding these (ideally by the
+/// 25th, for next month) instead of typing a target number — the count of
+/// entries for a brand+IP+month *is* the target. REGULAR entries count
+/// toward the IP matrix (ipId set); FESTIVAL/NON_IP entries are the old
+/// Festive & Non-IP log, folded in here (festivalId or workLabel set
+/// instead). Achieved = count with status != PENDING; live = count with
+/// status = LIVE. postDate minus the admin's buffer setting is when
+/// production is due — that's what drives each IP CS's task list.
+model CalendarEntry {
+  id          String      @id @default(cuid())
+  monthKey    String
+  brandId     String
+  kind        EntryKind   @default(REGULAR)
+  ipId        String?
+  festivalId  String?
+  /// Short description of the post, e.g. "Teaser reel" — for NON_IP this is the whole description; for FESTIVAL it's on top of the festival's own name.
+  title       String
+  format      PlanFormat?
+  /// "YYYY-MM-DD" — the date this is meant to go live.
+  postDate    String
+  status      EntryStatus @default(PENDING)
+  createdById String?
+  createdAt   DateTime    @default(now())
 
-  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  ip    Ip    @relation(fields: [ipId], references: [id], onDelete: Cascade)
-
-  @@unique([monthKey, brandId, ipId])
-  @@index([monthKey])
-}
-
-/// One piece of content, logged the moment it's made — the only act of
-/// "input" in the whole app. REGULAR pieces count toward a brand's IP
-/// matrix (ipId set); FESTIVAL/NON_IP pieces are the old Festive & Non-IP
-/// log, folded in here (festivalId or workLabel set instead). Achieved =
-/// count of matching rows; live = count with live=true.
-model Piece {
-  id         String      @id @default(cuid())
-  monthKey   String
-  brandId    String
-  kind       PieceKind   @default(REGULAR)
-  ipId       String?
-  festivalId String?
-  workLabel  String?
-  format     PlanFormat?
-  live       Boolean     @default(false)
-  loggedById String?
-  createdAt  DateTime    @default(now())
-
-  brand    Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  ip       Ip?       @relation(fields: [ipId], references: [id], onDelete: Cascade)
-  festival Festival? @relation(fields: [festivalId], references: [id], onDelete: Cascade)
-  loggedBy Person?   @relation(fields: [loggedById], references: [id], onDelete: SetNull)
+  brand     Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  ip        Ip?       @relation(fields: [ipId], references: [id], onDelete: Cascade)
+  festival  Festival? @relation(fields: [festivalId], references: [id], onDelete: Cascade)
+  createdBy Person?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([monthKey, brandId, ipId])
-  @@index([monthKey, brandId, kind, festivalId, workLabel, format])
+  @@index([postDate])
 }
 
 /// Admin overrides for one month: a different IP base target, or the achieved
@@ -193,7 +187,7 @@ model Festival {
   sortOrder Int     @default(0)
   active    Boolean @default(true)
 
-  pieces Piece[]
+  calendarEntries CalendarEntry[]
 }
 
 /// One planned shoot: who's going and when. Serial number is just the row's
