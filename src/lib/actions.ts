@@ -270,30 +270,43 @@ export async function setPlannedValue(entryId: string, field: "achieved" | "live
 
 /* ---------------- SHOOT SCHEDULE ---------------- */
 
-export async function addShoot(cohortId: string, detail: string, date: string, dop: string, socialMediaPerson: string) {
+export async function addShoot(cohortId: string, ipId: string, date: string, dop: string, socialMediaPerson: string, remarks: string) {
   return run(async () => {
     const user = await actionUser();
     assertLeadsCohort(user, cohortId);
     if (!DAY.test(date)) refuse("Pick a valid date.");
+    if (!(await prisma.ip.findUnique({ where: { id: ipId } }))) refuse("Pick an IP.");
     await prisma.shoot.create({
       data: {
         cohortId,
-        detail: text(detail, "the shoot detail", 300),
+        ipId,
         date,
         dop: text(dop, "the DOP"),
         socialMediaPerson: text(socialMediaPerson, "the social media person"),
+        remarks: String(remarks ?? "").trim().slice(0, 300),
       },
     });
   });
 }
 
-export async function updateShoot(shootId: string, field: "detail" | "date" | "dop" | "socialMediaPerson", value: string) {
+export async function updateShoot(shootId: string, field: "ipId" | "date" | "dop" | "socialMediaPerson" | "remarks", value: string) {
   return run(async () => {
     const user = await actionUser();
     const shoot = await prisma.shoot.findUnique({ where: { id: shootId } });
     if (!shoot) refuse("That shoot is already gone.");
     assertLeadsCohort(user, shoot.cohortId);
-    const v = field === "date" ? (DAY.test(value) ? value : refuse("Pick a valid date.")) : text(value, "that field", field === "detail" ? 300 : 120);
+    let v: string;
+    if (field === "date") {
+      if (!DAY.test(value)) refuse("Pick a valid date.");
+      v = value;
+    } else if (field === "ipId") {
+      if (!(await prisma.ip.findUnique({ where: { id: value } }))) refuse("Pick an IP.");
+      v = value;
+    } else if (field === "remarks") {
+      v = String(value ?? "").trim().slice(0, 300);
+    } else {
+      v = text(value, "that field");
+    }
     await prisma.shoot.update({ where: { id: shootId }, data: { [field]: v } });
   });
 }

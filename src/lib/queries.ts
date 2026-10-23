@@ -375,9 +375,10 @@ export async function getPlannedView(monthKey: string) {
 
 /** All shoots in a month, earliest first, plus the cohort list for the add form. */
 export async function getShootsView(monthKey: string) {
-  const [cohorts, shoots] = await Promise.all([
+  const [cohorts, ips, shoots] = await Promise.all([
     prisma.cohort.findMany({ orderBy: { code: "asc" } }),
-    prisma.shoot.findMany({ where: { date: { startsWith: monthKey } }, orderBy: { date: "asc" } }),
+    prisma.ip.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    prisma.shoot.findMany({ where: { date: { startsWith: monthKey } }, orderBy: { date: "asc" }, include: { ip: true } }),
   ]);
-  return { cohorts, shoots };
+  return { cohorts, ips, shoots };
 }

@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE "Shoot" DROP COLUMN "detail",
+ADD COLUMN     "ipId" TEXT NOT NULL,
+ADD COLUMN     "remarks" TEXT NOT NULL DEFAULT '';
+
+-- AddForeignKey
+ALTER TABLE "Shoot" ADD CONSTRAINT "Shoot_ipId_fkey" FOREIGN KEY ("ipId") REFERENCES "Ip"("id") ON DELETE CASCADE ON UPDATE CASCADE;

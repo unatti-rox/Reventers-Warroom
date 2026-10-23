@@ -11,6 +11,7 @@ export function EditableText({
   value,
   onCommit,
   readOnly = false,
+  allowEmpty = false,
   type = "text",
   placeholder = "—",
   label,
@@ -18,6 +19,7 @@ export function EditableText({
   value: string;
   onCommit: (value: string) => Promise<ActionResult>;
   readOnly?: boolean;
+  allowEmpty?: boolean;
   type?: "text" | "date";
   placeholder?: string;
   label?: string;
@@ -51,7 +53,8 @@ export function EditableText({
   const commit = () => {
     setEditing(false);
     const trimmed = draft.trim();
-    if (!trimmed || trimmed === value) return;
+    if (!trimmed && !allowEmpty) return;
+    if (trimmed === value) return;
     startTransition(async () => {
       const result = await onCommit(trimmed);
       if (!result.ok) alert(result.error);
