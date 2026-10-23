@@ -275,29 +275,48 @@ function weekOfMonth(dateStr: string): 1 | 2 | 3 | 4 {
   return 4;
 }
 
-export type BucketWeeklyLoad = { ip: { id: string; name: string }; weeks: [number, number, number, number]; total: number };
+export type BucketWeeklyLoad = {
+  ip: { id: string; name: string };
+  /** Not-yet-live posts due each week of the month (due date = post date minus the buffer). */
+  weeks: [number, number, number, number];
+  /** Sum of weeks - still outstanding. */
+  dueTotal: number;
+  /** Every post planned for this bucket this month (post date in this month), live or not. */
+  target: number;
+  /** How many of those are already live. */
+  live: number;
+};
 
 /**
- * For every bucket, how many not-yet-live posts are due each week of the
+ * For every bucket: how many not-yet-live posts are due each week of the
  * given month (due date = post date minus the buffer) - the view that
  * answers "how many outputs does each bucket need this week" without
- * anyone typing a number. Built straight from what cohort leaders planned.
+ * anyone typing a number - plus the month's overall target and how much
+ * of it is already live, so the weekly workload reads against real progress.
  */
 export async function getBucketWeeklyLoad(monthKey: string): Promise<BucketWeeklyLoad[]> {
-  const [bufferDays, ips, entries] = await Promise.all([
+  const [bufferDays, ips, pending, monthEntries] = await Promise.all([
     getCalendarBufferDays(),
     prisma.ip.findMany({ where: { sortOrder: { lt: 1000 } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
     prisma.calendarEntry.findMany({ where: { kind: EntryKind.REGULAR, status: { not: EntryStatus.LIVE } }, select: { ipId: true, postDate: true } }),
+    prisma.calendarEntry.findMany({ where: { kind: EntryKind.REGULAR, monthKey }, select: { ipId: true, status: true } }),
   ]);
   return ips.map((ip) => {
     const weeks: [number, number, number, number] = [0, 0, 0, 0];
-    for (const e of entries) {
+    for (const e of pending) {
       if (e.ipId !== ip.id) continue;
       const dueDate = addDays(e.postDate, -bufferDays);
       if (dueDate.slice(0, 7) !== monthKey) continue;
       weeks[weekOfMonth(dueDate) - 1] += 1;
     }
-    return { ip: { id: ip.id, name: ip.name }, weeks, total: weeks.reduce((s, n) => s + n, 0) };
+    const mine = monthEntries.filter((e) => e.ipId === ip.id);
+    return {
+      ip: { id: ip.id, name: ip.name },
+      weeks,
+      dueTotal: weeks.reduce((s, n) => s + n, 0),
+      target: mine.length,
+      live: mine.filter((e) => e.status === EntryStatus.LIVE).length,
+    };
   });
 }
 
