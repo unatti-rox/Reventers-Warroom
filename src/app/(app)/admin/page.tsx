@@ -138,7 +138,9 @@ async function CohortsTab() {
   const [cohorts, people, ips] = await Promise.all([
     prisma.cohort.findMany({ orderBy: { code: "asc" }, include: { brands: { orderBy: { name: "asc" } }, ips: true } }),
     prisma.person.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-    prisma.ip.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    // Only the current bucket list (see applyContentBucketRelist in seed.ts) - the old launch-era
+    // IP names are kept around for Shoot Schedule/assignment history but sorted below 1000, out of this picker.
+    prisma.ip.findMany({ where: { sortOrder: { lt: 1000 } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
   ]);
   const cohortOptions = cohorts.map((c) => ({ id: c.id, label: `${c.code} · ${c.leaderName}` }));
   const peopleOptions = people.map((p) => ({ id: p.id, label: `${p.name} (${ROLE_LABEL[p.appRole]})` }));
@@ -254,8 +256,15 @@ async function IpsTab() {
             </thead>
             <tbody>
               {ips.map((ip) => (
-                <tr key={ip.id}>
-                  <Td className="font-bold align-top">{ip.name}</Td>
+                <tr key={ip.id} style={{ opacity: ip.sortOrder >= 1000 ? 0.55 : 1 }}>
+                  <Td className="font-bold align-top">
+                    {ip.name}
+                    {ip.sortOrder >= 1000 && (
+                      <div className="text-[9.5px] font-normal" style={{ color: "var(--text-muted)" }}>
+                        old bucket name — not shown on Cohorts &amp; Brands
+                      </div>
+                    )}
+                  </Td>
                   <Td>
                     {ip.assignments.map((a) => (
                       <IpMemberChip key={a.id} assignmentId={a.id} label={`${ROLE[a.role]}: ${a.person.name}`} />

@@ -446,7 +446,8 @@ export async function addIp(name: string) {
     await actionAdmin();
     const n = text(name, "an IP name");
     if (await prisma.ip.findUnique({ where: { name: n } })) refuse(`${n} already exists.`);
-    const last = await prisma.ip.findFirst({ orderBy: { sortOrder: "desc" } });
+    // Stay below 1000: that's the cutoff separating the current bucket list from old, no-longer-picked IPs (see applyContentBucketRelist in seed.ts).
+    const last = await prisma.ip.findFirst({ where: { sortOrder: { lt: 1000 } }, orderBy: { sortOrder: "desc" } });
     await prisma.ip.create({ data: { name: n, sortOrder: (last?.sortOrder ?? 0) + 1 } });
   });
 }
