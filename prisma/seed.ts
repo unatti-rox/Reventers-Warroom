@@ -74,6 +74,7 @@ async function main() {
   await removeEditorsAndDesigners();
   await restoreEditorsAndDesigners();
   await replaceC8Leaders();
+  await addC8ToYoshitaKaranGroup();
 }
 
 /**
@@ -441,6 +442,41 @@ async function replaceC8Leaders() {
 
   await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
   console.log("C8 leadership replaced with Harshil & Aditi (Oct 2026).");
+}
+
+/**
+ * C8 (Harshil & Aditi) joins the Yoshita+Karan rotation group as a third
+ * cohort: adds C8 to every IP+week entry this month that already has both
+ * C6 and C7 assigned. Same technique as pairing Shradha's C9 with
+ * Aasawari's C1 - future months inherit it since each new cycle clones the
+ * previous one's cohort assignments. Runs once (tracked by its own marker).
+ */
+async function addC8ToYoshitaKaranGroup() {
+  const key = "c8-join-yk-group.2026-10";
+  if (await prisma.appSetting.findUnique({ where: { key } })) return;
+
+  const c6 = await prisma.cohort.findUniqueOrThrow({ where: { code: "C6" } });
+  const c7 = await prisma.cohort.findUniqueOrThrow({ where: { code: "C7" } });
+  const c8 = await prisma.cohort.findUniqueOrThrow({ where: { code: "C8" } });
+  const monthKey = currentMonthKey();
+
+  const cycle = await prisma.rotationCycle.findUnique({
+    where: { monthKey },
+    include: { entries: { include: { assignments: true } } },
+  });
+  if (cycle) {
+    for (const entry of cycle.entries) {
+      const hasC6 = entry.assignments.some((a) => a.cohortId === c6.id);
+      const hasC7 = entry.assignments.some((a) => a.cohortId === c7.id);
+      const hasC8 = entry.assignments.some((a) => a.cohortId === c8.id);
+      if (hasC6 && hasC7 && !hasC8) {
+        await prisma.rotationAssignment.create({ data: { entryId: entry.id, cohortId: c8.id } });
+      }
+    }
+  }
+
+  await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
+  console.log("Harshil & Aditi (C8) joined the Yoshita+Karan rotation group (Oct 2026).");
 }
 
 async function loadLaunchData() {
