@@ -73,6 +73,7 @@ async function main() {
   await restoreEditorsAndDesigners();
   await replaceC8Leaders();
   await addC8ToYoshitaKaranGroup();
+  await applyContentBucketRelist();
 }
 
 /**
@@ -427,6 +428,49 @@ async function addC8ToYoshitaKaranGroup() {
   const key = "c8-join-yk-group.2026-10";
   if (await prisma.appSetting.findUnique({ where: { key } })) return;
   await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
+}
+
+/**
+ * The real content-bucket list for the "Log it" calendar dropdown,
+ * replacing the old launch-era IP names. Old IPs aren't deleted (that
+ * would cascade-delete any real Shoot Schedule rows and person
+ * assignments pointing at them) - just pushed below these 14 in sort
+ * order, so they stop showing up first while nothing historical is lost.
+ * Admin -> Cohorts & Brands still needs each cohort re-paired to these.
+ * Runs once (tracked by its own marker).
+ */
+const CONTENT_BUCKETS = [
+  "Contests / Regular GIFs",
+  "Festive Reels / AV",
+  "Events",
+  "History / Brand Based Reels",
+  "AI Sample Flat / Walkthroughs",
+  "Sample Flat Photoshoot",
+  "Connectivity / Infrastructure",
+  "Teaser / Launch Reels and AVs",
+  "Location",
+  "Amenity / Project Reels",
+  "Construction",
+  "Unique USP",
+  "Living It",
+  "Bytes / Team Culture",
+];
+
+async function applyContentBucketRelist() {
+  const key = "content-bucket-relist.2026-10";
+  if (await prisma.appSetting.findUnique({ where: { key } })) return;
+
+  const existing = await prisma.ip.findMany({ select: { id: true, sortOrder: true } });
+  for (const ip of existing) {
+    await prisma.ip.update({ where: { id: ip.id }, data: { sortOrder: ip.sortOrder + 1000 } });
+  }
+
+  for (const [i, name] of CONTENT_BUCKETS.entries()) {
+    await prisma.ip.upsert({ where: { name }, update: { sortOrder: i + 1 }, create: { name, sortOrder: i + 1 } });
+  }
+
+  await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
+  console.log("Content bucket list replaced (Oct 2026).");
 }
 
 async function loadLaunchData() {

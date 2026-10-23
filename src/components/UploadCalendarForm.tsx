@@ -6,11 +6,15 @@ import { inputStyle, primaryButtonStyle } from "@/components/ui";
 import { FORMATS, FORMAT_LABEL } from "@/components/AddCalendarEntryForm";
 import type { EntryKind, PlanFormat } from "@/generated/prisma/enums";
 
+const NON_IP = "nonip";
+const FESTIVAL = "festival";
+const ipValue = (id: string) => `ip:${id}`;
+
 type DraftRow = {
   key: string;
   title: string;
-  kind: EntryKind;
-  ipId: string | null;
+  /** "" (needs a pick - the AI's guess didn't match anything), "ip:<id>", "festival", or "nonip". */
+  bucket: string;
   ipNameGuess: string | null;
   festivalId: string | null;
   festivalNameGuess: string | null;
@@ -19,6 +23,12 @@ type DraftRow = {
 };
 
 const errorStyle = { ...inputStyle, borderColor: "var(--status-critical)" };
+
+function bucketToKind(bucket: string): EntryKind {
+  if (bucket === NON_IP) return "NON_IP";
+  if (bucket === FESTIVAL) return "FESTIVAL";
+  return "REGULAR";
+}
 
 /** Upload a photo of the brand's calendar - the AI reads it and drafts posts here for a quick check before anything's saved. */
 export function UploadCalendarForm({
@@ -61,8 +71,7 @@ export function UploadCalendarForm({
           r.entries.map((entry, i) => ({
             key: `${Date.now()}-${i}`,
             title: entry.title,
-            kind: entry.kind,
-            ipId: entry.ipId,
+            bucket: entry.kind === "REGULAR" ? (entry.ipId ? ipValue(entry.ipId) : "") : entry.kind === "FESTIVAL" ? FESTIVAL : NON_IP,
             ipNameGuess: entry.ipNameGuess,
             festivalId: entry.festivalId,
             festivalNameGuess: entry.festivalNameGuess,
@@ -83,19 +92,20 @@ export function UploadCalendarForm({
     setDrafts((prev) => prev?.filter((d) => d.key !== key) ?? null);
   }
 
-  const allValid = (drafts ?? []).every((d) => d.postDate && d.title.trim() && (d.kind !== "REGULAR" || d.ipId) && (d.kind !== "FESTIVAL" || d.festivalId));
+  const allValid = (drafts ?? []).every((d) => d.postDate && d.title.trim() && d.bucket && (bucketToKind(d.bucket) !== "FESTIVAL" || d.festivalId));
 
   function confirmAll() {
     if (!drafts || drafts.length === 0) return;
     startConfirming(async () => {
       for (const d of drafts) {
+        const kind = bucketToKind(d.bucket);
         const r = await addCalendarEntry({
           brandId,
-          kind: d.kind,
-          ipId: d.kind === "REGULAR" ? (d.ipId ?? undefined) : undefined,
-          festivalId: d.kind === "FESTIVAL" ? (d.festivalId ?? undefined) : undefined,
+          kind,
+          ipId: kind === "REGULAR" ? d.bucket.slice(3) : undefined,
+          festivalId: kind === "FESTIVAL" ? (d.festivalId ?? undefined) : undefined,
           title: d.title,
-          format: d.kind === "REGULAR" ? undefined : d.format,
+          format: kind === "REGULAR" ? undefined : d.format,
           postDate: d.postDate,
         });
         if (!r.ok) {
@@ -124,62 +134,60 @@ export function UploadCalendarForm({
       <div className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
         Found {drafts.length} planned post{drafts.length === 1 ? "" : "s"} — check these before confirming
       </div>
-      {drafts.map((d) => (
-        <div key={d.key} className="flex flex-wrap items-center gap-1.5 py-1.5 border-b" style={{ borderColor: "var(--border)" }}>
-          <select value={d.kind} onChange={(e) => update(d.key, { kind: e.target.value as EntryKind })} className="h-7 rounded border px-1.5 text-[10.5px]" style={inputStyle} aria-label="Type">
-            <option value="REGULAR">IP</option>
-            <option value="FESTIVAL">Festival</option>
-            <option value="NON_IP">Non-IP</option>
-          </select>
-          {d.kind === "REGULAR" && (
-            <select value={d.ipId ?? ""} onChange={(e) => update(d.key, { ipId: e.target.value || null })} className="h-7 rounded border px-1.5 text-[10.5px]" style={d.ipId ? inputStyle : errorStyle} aria-label="IP">
-              <option value="">{d.ipNameGuess ? `"${d.ipNameGuess}" — pick one` : "Pick an IP…"}</option>
+      {drafts.map((d) => {
+        const kind = bucketToKind(d.bucket);
+        return (
+          <div key={d.key} className="flex flex-wrap items-center gap-1.5 py-1.5 border-b" style={{ borderColor: "var(--border)" }}>
+            <select value={d.bucket} onChange={(e) => update(d.key, { bucket: e.target.value })} className="h-7 rounded border px-1.5 text-[10.5px] min-w-[150px]" style={d.bucket ? inputStyle : errorStyle} aria-label="Bucket">
+              <option value="">{d.ipNameGuess ? `"${d.ipNameGuess}" — pick one` : "Pick a bucket…"}</option>
               {ips.map((ip) => (
-                <option key={ip.id} value={ip.id}>
+                <option key={ip.id} value={ipValue(ip.id)}>
                   {ip.name}
                 </option>
               ))}
+              <option value={FESTIVAL}>Festival</option>
+              <option value={NON_IP}>Non-IP</option>
             </select>
-          )}
-          {d.kind === "FESTIVAL" && (
-            <select
-              value={d.festivalId ?? ""}
-              onChange={(e) => update(d.key, { festivalId: e.target.value || null })}
-              className="h-7 rounded border px-1.5 text-[10.5px] min-w-[160px]"
-              style={d.festivalId ? inputStyle : errorStyle}
-              aria-label="Festival"
-            >
-              <option value="">{d.festivalNameGuess ? `"${d.festivalNameGuess}" — pick one` : "Pick a festival…"}</option>
-              {festivals.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
-          )}
-          {d.kind !== "REGULAR" && (
-            <select value={d.format} onChange={(e) => update(d.key, { format: e.target.value as PlanFormat })} className="h-7 rounded border px-1.5 text-[10.5px]" style={inputStyle} aria-label="Format">
-              {FORMATS.map((f) => (
-                <option key={f} value={f}>
-                  {FORMAT_LABEL[f]}
-                </option>
-              ))}
-            </select>
-          )}
-          <input value={d.title} onChange={(e) => update(d.key, { title: e.target.value })} className="h-7 rounded border px-1.5 text-[10.5px] flex-1 min-w-[120px]" style={inputStyle} aria-label="Title" />
-          <input
-            type="date"
-            value={d.postDate}
-            onChange={(e) => update(d.key, { postDate: e.target.value })}
-            className="h-7 rounded border px-1.5 text-[10.5px]"
-            style={d.postDate ? inputStyle : errorStyle}
-            aria-label="Post date"
-          />
-          <button type="button" onClick={() => remove(d.key)} className="text-[12px] px-1" style={{ color: "var(--status-critical)" }} aria-label="Remove">
-            ✕
-          </button>
-        </div>
-      ))}
+            {kind === "FESTIVAL" && (
+              <select
+                value={d.festivalId ?? ""}
+                onChange={(e) => update(d.key, { festivalId: e.target.value || null })}
+                className="h-7 rounded border px-1.5 text-[10.5px] min-w-[160px]"
+                style={d.festivalId ? inputStyle : errorStyle}
+                aria-label="Which festival"
+              >
+                <option value="">{d.festivalNameGuess ? `"${d.festivalNameGuess}" — pick one` : "Pick a festival…"}</option>
+                {festivals.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            {kind !== "REGULAR" && (
+              <select value={d.format} onChange={(e) => update(d.key, { format: e.target.value as PlanFormat })} className="h-7 rounded border px-1.5 text-[10.5px]" style={inputStyle} aria-label="Format">
+                {FORMATS.map((f) => (
+                  <option key={f} value={f}>
+                    {FORMAT_LABEL[f]}
+                  </option>
+                ))}
+              </select>
+            )}
+            <input value={d.title} onChange={(e) => update(d.key, { title: e.target.value })} className="h-7 rounded border px-1.5 text-[10.5px] flex-1 min-w-[120px]" style={inputStyle} aria-label="Title" />
+            <input
+              type="date"
+              value={d.postDate}
+              onChange={(e) => update(d.key, { postDate: e.target.value })}
+              className="h-7 rounded border px-1.5 text-[10.5px]"
+              style={d.postDate ? inputStyle : errorStyle}
+              aria-label="Post date"
+            />
+            <button type="button" onClick={() => remove(d.key)} className="text-[12px] px-1" style={{ color: "var(--status-critical)" }} aria-label="Remove">
+              ✕
+            </button>
+          </div>
+        );
+      })}
       <div className="flex items-center gap-2 flex-wrap mt-2.5">
         <button
           type="button"
