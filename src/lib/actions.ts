@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { actionAdmin, actionUser, createSession, destroySession, getCurrentUser, type CurrentUser } from "@/lib/auth";
 import { hashPassword, temporaryPassword, verifyPassword } from "@/lib/password";
 import { getOrCreateCycle } from "@/lib/rotation";
-import { WEEKS, addDays, currentMonthKey, istDateTime, todayDateStr, type WeekKey } from "@/lib/dates";
+import { WEEKS, currentMonthKey, type WeekKey } from "@/lib/dates";
 import { AppRole, PersonRole, PlanFormat, PlanKind, StatusState } from "@/generated/prisma/enums";
 
 /** Actions return a message instead of throwing: production builds hide thrown error text. */
@@ -33,7 +33,6 @@ function refuse(message: string): never {
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function checkMonth(monthKey: string) {
   if (!MONTH.test(monthKey)) refuse("Invalid month.");
@@ -61,6 +60,11 @@ async function assertLeadsBrand(user: CurrentUser, brandId: string) {
   if (user.isAdmin) return;
   const cohortId = await brandCohortId(brandId);
   if (!user.cohortIds.includes(cohortId)) refuse("You can only edit your own cohort's brands.");
+}
+
+function assertLeadsCohort(user: CurrentUser, cohortId: string) {
+  if (user.isAdmin) return;
+  if (!user.cohortIds.includes(cohortId)) refuse("You can only edit your own cohort's shoots.");
 }
 
 /* ---------------- ACCOUNT ---------------- */
@@ -264,68 +268,43 @@ export async function setPlannedValue(entryId: string, field: "achieved" | "live
   });
 }
 
-/* ---------------- ATTENDANCE ---------------- */
+/* ---------------- SHOOT SCHEDULE ---------------- */
 
-/**
- * Clock in for today. If yesterday (or an earlier day) was left without a
- * clock-out, that time must be given first.
- */
-export async function clockIn(previousClockOut: string | null) {
+export async function addShoot(cohortId: string, detail: string, date: string, dop: string, socialMediaPerson: string) {
   return run(async () => {
     const user = await actionUser();
-    const today = todayDateStr();
-    const open = await prisma.attendanceDay.findFirst({
-      where: { personId: user.id, clockOut: null, day: { lt: today } },
-      orderBy: { day: "desc" },
-    });
-    if (open) {
-      if (!previousClockOut || !HHMM.test(previousClockOut)) refuse(`Enter the time you clocked out on ${open.day} first.`);
-      const out = istDateTime(open.day, previousClockOut);
-      if (out <= open.clockIn) refuse("That clock-out time is before you clocked in that day.");
-      await prisma.attendanceDay.update({ where: { id: open.id }, data: { clockOut: out, note: "Clock-out added next day" } });
-    }
-    const existing = await prisma.attendanceDay.findUnique({ where: { personId_day: { personId: user.id, day: today } } });
-    if (existing) refuse("You've already clocked in today.");
-    await prisma.attendanceDay.create({ data: { personId: user.id, day: today, clockIn: new Date() } });
-    return "Clocked in";
-  });
-}
-
-export async function clockOut() {
-  return run(async () => {
-    const user = await actionUser();
-    const today = todayDateStr();
-    const day = await prisma.attendanceDay.findUnique({ where: { personId_day: { personId: user.id, day: today } } });
-    if (!day) refuse("You haven't clocked in today.");
-    if (day.clockOut) refuse("You've already clocked out today.");
-    await prisma.attendanceDay.update({ where: { id: day.id }, data: { clockOut: new Date() } });
-    return "Clocked out";
-  });
-}
-
-/** Admins correct or add a day. Times are India time, "HH:MM"; clock-out may be empty. */
-export async function adminSetAttendance(personId: string, day: string, inTime: string, outTime: string) {
-  return run(async () => {
-    await actionAdmin();
-    if (!DAY.test(day) || day > todayDateStr()) refuse("Pick a date that isn't in the future.");
-    if (!HHMM.test(inTime)) refuse("Enter a clock-in time like 09:30.");
-    if (outTime && !HHMM.test(outTime)) refuse("Enter a clock-out time like 18:30, or leave it empty.");
-    const clockIn = istDateTime(day, inTime);
-    let clockOutAt = outTime ? istDateTime(day, outTime) : null;
-    // A clock-out earlier than clock-in means the shift ran past midnight.
-    if (clockOutAt && clockOutAt <= clockIn) clockOutAt = istDateTime(addDays(day, 1), outTime);
-    await prisma.attendanceDay.upsert({
-      where: { personId_day: { personId, day } },
-      update: { clockIn, clockOut: clockOutAt, note: "Edited by admin" },
-      create: { personId, day, clockIn, clockOut: clockOutAt, note: "Added by admin" },
+    assertLeadsCohort(user, cohortId);
+    if (!DAY.test(date)) refuse("Pick a valid date.");
+    await prisma.shoot.create({
+      data: {
+        cohortId,
+        detail: text(detail, "the shoot detail", 300),
+        date,
+        dop: text(dop, "the DOP"),
+        socialMediaPerson: text(socialMediaPerson, "the social media person"),
+      },
     });
   });
 }
 
-export async function adminDeleteAttendance(personId: string, day: string) {
+export async function updateShoot(shootId: string, field: "detail" | "date" | "dop" | "socialMediaPerson", value: string) {
   return run(async () => {
-    await actionAdmin();
-    await prisma.attendanceDay.deleteMany({ where: { personId, day } });
+    const user = await actionUser();
+    const shoot = await prisma.shoot.findUnique({ where: { id: shootId } });
+    if (!shoot) refuse("That shoot is already gone.");
+    assertLeadsCohort(user, shoot.cohortId);
+    const v = field === "date" ? (DAY.test(value) ? value : refuse("Pick a valid date.")) : text(value, "that field", field === "detail" ? 300 : 120);
+    await prisma.shoot.update({ where: { id: shootId }, data: { [field]: v } });
+  });
+}
+
+export async function removeShoot(shootId: string) {
+  return run(async () => {
+    const user = await actionUser();
+    const shoot = await prisma.shoot.findUnique({ where: { id: shootId } });
+    if (!shoot) return;
+    assertLeadsCohort(user, shoot.cohortId);
+    await prisma.shoot.delete({ where: { id: shootId } });
   });
 }
 

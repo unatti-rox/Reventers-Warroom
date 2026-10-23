@@ -236,7 +236,7 @@ async function IpsTab() {
         </div>
       </Card>
       <Card>
-        <CardHead title="IP teams" subtitle="Who handles each IP. Used for the dashboard, rotation, matrix permissions and per-IP absenteeism." />
+        <CardHead title="IP teams" subtitle="Who handles each IP. Used for the dashboard, rotation and matrix permissions." />
         <div className="overflow-auto">
           <table className="w-full border-collapse" style={{ minWidth: 760 }}>
             <thead>

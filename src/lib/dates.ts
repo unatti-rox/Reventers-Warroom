@@ -54,17 +54,6 @@ export function addMonths(monthKey: string, n: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-export function addDays(dateStr: string, n: number): string {
-  const d = new Date(`${dateStr}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
-export function daysInMonth(monthKey: string): number {
-  const [year, month] = monthKey.split("-").map(Number);
-  return new Date(Date.UTC(year, month, 0)).getUTCDate();
-}
-
 /** The working year runs June to May. Returns the June that starts it, e.g. 2026 for Sep 2026 or Mar 2027. */
 export function yearStartFor(monthKey: string): number {
   const [year, month] = monthKey.split("-").map(Number);
@@ -78,14 +67,4 @@ export function yearMonths(startYear: number): string[] {
 
 export function yearLabel(startYear: number): string {
   return `Jun ${startYear} – May ${startYear + 1}`;
-}
-
-/** Time of day in India, e.g. "09:42". */
-export function timeLabel(date: Date): string {
-  return date.toLocaleTimeString("en-GB", { timeZone: TIME_ZONE, hour: "2-digit", minute: "2-digit", hour12: false });
-}
-
-/** A UTC moment for "HH:MM" on an India-time day (India is UTC+5:30 with no DST). */
-export function istDateTime(dateStr: string, hhmm: string): Date {
-  return new Date(`${dateStr}T${hhmm}:00+05:30`);
 }

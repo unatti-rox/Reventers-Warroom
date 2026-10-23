@@ -10,8 +10,7 @@ const NAV = [
   { href: "/festive", label: "Festive & Non-IP" },
   { href: "/cohort-progress", label: "Cohort Progress" },
   { href: "/trades", label: "Trade-off Log" },
-  { href: "/attendance", label: "Attendance" },
-  { href: "/trends", label: "Trends" },
+  { href: "/shoot-schedule", label: "Shoot Schedule" },
 ];
 
 const UPDATE_STATUS_NAV = { href: "/update-status", label: "Update Status" };

@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { PersonRole, StatusState } from "@/generated/prisma/enums";
 import { WEEKS, currentMonthKey, currentWeekKey, type WeekKey } from "@/lib/dates";
 import { getOrCreateCycle, statusValue, effectiveAssignment } from "@/lib/rotation";
-import { summarize } from "@/lib/attendance";
 
 /** Brands that count in a given month (not archived before it). */
 function activeIn(monthKey: string) {
@@ -372,82 +371,13 @@ export async function getPlannedView(monthKey: string) {
   return { cohorts, festivals, rows, festiveTotal: sumBy("FESTIVAL"), nonIpTotal: sumBy("NON_IP") };
 }
 
-/* ---------------- ATTENDANCE ---------------- */
+/* ---------------- SHOOT SCHEDULE ---------------- */
 
-export async function getMyAttendance(personId: string, monthKey: string) {
-  const days = await prisma.attendanceDay.findMany({
-    where: { personId, day: { startsWith: monthKey } },
-    orderBy: { day: "desc" },
-  });
-  return { days, summary: summarize(monthKey, days) };
-}
-
-export async function getOpenDay(personId: string) {
-  return prisma.attendanceDay.findFirst({ where: { personId, clockOut: null }, orderBy: { day: "desc" } });
-}
-
-/** IP CS, designers and editors, with their month summary (admin view). Excludes cohort leaders and admins. */
-export async function getAttendanceOverview(monthKey: string) {
-  const [people, days] = await Promise.all([
-    prisma.person.findMany({ where: { active: true, appRole: { in: ["IP_CS", "DESIGNER", "EDITOR"] } }, orderBy: [{ appRole: "asc" }, { name: "asc" }] }),
-    prisma.attendanceDay.findMany({ where: { day: { startsWith: monthKey } } }),
-  ]);
-  return people.map((p) => ({ person: p, summary: summarize(monthKey, days.filter((d) => d.personId === p.id)) }));
-}
-
-/** Each IP team's average absence rate for the month (IP CS + designers + editors). */
-export async function getIpAbsenteeism(monthKey: string) {
-  const [teams, overview] = await Promise.all([getIpTeams(), getAttendanceOverview(monthKey)]);
-  const rateById = new Map(overview.map((o) => [o.person.id, o.summary]));
-  return teams
-    .map((t) => {
-      const members = t.personIds.map((id) => rateById.get(id)).filter((s): s is NonNullable<typeof s> => Boolean(s));
-      const avg = members.length ? Math.round(members.reduce((s, m) => s + m.absenceRate, 0) / members.length) : 0;
-      const absentDays = members.reduce((s, m) => s + m.absent, 0);
-      return { ip: t, teamSize: members.length, absenceRate: avg, absentDays };
-    })
-    .sort((a, b) => b.absenceRate - a.absenceRate || b.absentDays - a.absentDays);
-}
-
-/* ---------------- TRENDS ---------------- */
-
-/** Month-by-month IP output vs. matrix target, per-cohort completion, and absence rate. */
-export async function getTrendsData() {
-  const [cells, cohorts, attendance, people] = await Promise.all([
-    prisma.brandIpMonth.findMany({ include: { brand: { select: { cohortId: true } } } }),
+/** All shoots in a month, earliest first, plus the cohort list for the add form. */
+export async function getShootsView(monthKey: string) {
+  const [cohorts, shoots] = await Promise.all([
     prisma.cohort.findMany({ orderBy: { code: "asc" } }),
-    prisma.attendanceDay.findMany(),
-    prisma.person.findMany({ where: { active: true, appRole: { not: "ADMIN" } }, select: { id: true } }),
+    prisma.shoot.findMany({ where: { date: { startsWith: monthKey } }, orderBy: { date: "asc" } }),
   ]);
-
-  const monthKeys = Array.from(new Set(cells.map((c) => c.monthKey))).sort();
-  const rotationTrend = monthKeys.map((monthKey) => {
-    const month = cells.filter((c) => c.monthKey === monthKey);
-    const totalTarget = month.reduce((s, c) => s + c.target, 0);
-    const totalAchieved = month.reduce((s, c) => s + c.achieved, 0);
-    const perCohort: Record<string, number> = {};
-    for (const cohort of cohorts) {
-      const mine = month.filter((c) => c.brand.cohortId === cohort.id);
-      const t = mine.reduce((s, c) => s + c.target, 0);
-      const a = mine.reduce((s, c) => s + c.achieved, 0);
-      perCohort[cohort.code] = t ? Math.min(100, Math.round((a / t) * 100)) : 0;
-    }
-    return {
-      monthKey,
-      outputPct: totalTarget ? Math.round((totalAchieved / totalTarget) * 100) : 0,
-      totalTarget,
-      totalAchieved,
-      ...perCohort,
-    };
-  });
-
-  const attendanceMonths = Array.from(new Set(attendance.map((d) => d.day.slice(0, 7)))).sort();
-  const attendanceTrend = attendanceMonths.map((monthKey) => {
-    const month = attendance.filter((d) => d.day.startsWith(monthKey));
-    const rates = people.map((p) => summarize(monthKey, month.filter((d) => d.personId === p.id)).absenceRate);
-    const absenceRatePct = rates.length ? Math.round(rates.reduce((s, r) => s + r, 0) / rates.length) : 0;
-    return { monthKey, absenceRatePct, present: 0, absent: 0 };
-  });
-
-  return { rotationTrend, attendanceTrend, cohortCodes: cohorts.map((c) => c.code) };
+  return { cohorts, shoots };
 }

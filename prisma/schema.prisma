@@ -64,6 +64,7 @@ model Cohort {
   tradesReleased       Trade[]              @relation("TradeReleased")
   tradesClaimed        Trade[]              @relation("TradeClaimed")
   cohortWeeklyStatuses CohortWeeklyStatus[]
+  shoots               Shoot[]
 }
 
 /// A brand (client). The table keeps its original "Client" name in the database.
@@ -109,7 +110,6 @@ model Person {
   createdAt          DateTime @default(now())
 
   assignments   PersonAssignment[]
-  attendance    AttendanceDay[]
   sessions      Session[]
   leadsCohorts  Cohort[]           @relation("CohortLeader")
 }
@@ -273,18 +273,19 @@ model CohortWeeklyStatus {
   @@unique([cycleId, cohortId, ipId, week])
 }
 
-/// One person's working day: clock-in and clock-out times (stored in UTC).
-model AttendanceDay {
-  id       String    @id @default(cuid())
-  personId String
-  /// The working day in India time, "YYYY-MM-DD".
-  day      String
-  clockIn  DateTime
-  clockOut DateTime?
-  note     String?
+/// One planned shoot: who's going and when. Serial number is just the row's
+/// position when listed, not stored.
+model Shoot {
+  id                String   @id @default(cuid())
+  cohortId          String
+  detail            String
+  /// "YYYY-MM-DD".
+  date              String
+  dop               String
+  socialMediaPerson String
+  createdAt         DateTime @default(now())
 
-  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  cohort Cohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
 
-  @@unique([personId, day])
-  @@index([day])
+  @@index([date])
 }
