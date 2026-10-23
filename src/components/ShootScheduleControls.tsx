@@ -5,6 +5,8 @@ import { EditableText } from "@/components/EditableText";
 import { addShoot, removeShoot, updateShoot } from "@/lib/actions";
 import { inputStyle, primaryButtonStyle } from "@/components/ui";
 
+export const SOCIAL_MEDIA_PEOPLE = ["Akash", "Aniket", "Sahil", "Satish", "Ansh"];
+
 export function ShootTextCell({
   shootId,
   field,
@@ -15,7 +17,7 @@ export function ShootTextCell({
   label,
 }: {
   shootId: string;
-  field: "date" | "dop" | "socialMediaPerson" | "remarks";
+  field: "date" | "dop" | "remarks";
   value: string;
   editable: boolean;
   type?: "text" | "date";
@@ -23,6 +25,36 @@ export function ShootTextCell({
   label: string;
 }) {
   return <EditableText value={value} readOnly={!editable} allowEmpty={allowEmpty} type={type} label={label} onCommit={(v) => updateShoot(shootId, field, v)} />;
+}
+
+export function ShootSocialMediaCell({ shootId, value, editable }: { shootId: string; value: string; editable: boolean }) {
+  const [pending, startTransition] = useTransition();
+  if (!editable) {
+    return <span>{value || "—"}</span>;
+  }
+  const options = SOCIAL_MEDIA_PEOPLE.includes(value) || !value ? SOCIAL_MEDIA_PEOPLE : [value, ...SOCIAL_MEDIA_PEOPLE];
+  return (
+    <select
+      value={value}
+      disabled={pending}
+      onChange={(e) => {
+        const next = e.target.value;
+        startTransition(async () => {
+          const r = await updateShoot(shootId, "socialMediaPerson", next);
+          if (!r.ok) alert(r.error);
+        });
+      }}
+      className="h-8 rounded-lg border px-2 text-[11px]"
+      style={{ ...inputStyle, opacity: pending ? 0.6 : 1 }}
+      aria-label="Social media person"
+    >
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 export function ShootIpCell({
@@ -92,7 +124,7 @@ export function AddShootForm({ cohorts, ips }: { cohorts: { id: string; label: s
   const [ipId, setIpId] = useState(ips[0]?.id ?? "");
   const [date, setDate] = useState("");
   const [dop, setDop] = useState("");
-  const [socialMediaPerson, setSocialMediaPerson] = useState("");
+  const [socialMediaPerson, setSocialMediaPerson] = useState(SOCIAL_MEDIA_PEOPLE[0]);
   const [remarks, setRemarks] = useState("");
   const [pending, startTransition] = useTransition();
 
@@ -112,7 +144,7 @@ export function AddShootForm({ cohorts, ips }: { cohorts: { id: string; label: s
           else {
             setDate("");
             setDop("");
-            setSocialMediaPerson("");
+            setSocialMediaPerson(SOCIAL_MEDIA_PEOPLE[0]);
             setRemarks("");
           }
         });
@@ -142,15 +174,19 @@ export function AddShootForm({ cohorts, ips }: { cohorts: { id: string; label: s
         style={inputStyle}
         aria-label="DOP"
       />
-      <input
-        type="text"
+      <select
         value={socialMediaPerson}
         onChange={(e) => setSocialMediaPerson(e.target.value)}
-        placeholder="Social media person"
-        className="h-9 rounded-lg border px-2.5 text-[11px] min-w-[160px]"
+        className="h-9 rounded-lg border px-2 text-[11px]"
         style={inputStyle}
         aria-label="Social media person"
-      />
+      >
+        {SOCIAL_MEDIA_PEOPLE.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+      </select>
       <input
         type="text"
         value={remarks}

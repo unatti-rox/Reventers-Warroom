@@ -1,6 +1,6 @@
 import { PageHeader, Card, CardHead, Th, Td, EmptyNote } from "@/components/ui";
 import { MonthSwitcher } from "@/components/Switchers";
-import { AddShootForm, RemoveShootButton, ShootIpCell, ShootTextCell } from "@/components/ShootScheduleControls";
+import { AddShootForm, RemoveShootButton, ShootIpCell, ShootSocialMediaCell, ShootTextCell } from "@/components/ShootScheduleControls";
 import { getShootsView } from "@/lib/queries";
 import { requireUser } from "@/lib/auth";
 import { currentMonthKey, monthKeyLabel, yearMonths, yearStartFor } from "@/lib/dates";
@@ -64,7 +64,7 @@ export default async function ShootSchedulePage({ searchParams }: { searchParams
                       <ShootTextCell shootId={s.id} field="dop" value={s.dop} editable={editable} label={`${cohort?.code} DOP`} />
                     </Td>
                     <Td>
-                      <ShootTextCell shootId={s.id} field="socialMediaPerson" value={s.socialMediaPerson} editable={editable} label={`${cohort?.code} social media person`} />
+                      <ShootSocialMediaCell shootId={s.id} value={s.socialMediaPerson} editable={editable} />
                     </Td>
                     <Td>
                       <ShootTextCell shootId={s.id} field="remarks" value={s.remarks} editable={editable} allowEmpty label={`${cohort?.code} remarks`} />
