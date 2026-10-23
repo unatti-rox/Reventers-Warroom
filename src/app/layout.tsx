@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "IP Production Command Center",
+  title: "Insomniacs Kitchen",
   description: "Cohort Leader → Brand → IP CS → IP → Designer → Editor → Output",
 };
 

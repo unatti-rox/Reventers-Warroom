@@ -43,10 +43,10 @@ export function Sidebar({ user }: { user: NavUser }) {
     >
       <div className="px-2 pb-5">
         <div className="text-[13px] font-extrabold leading-tight" style={{ color: "var(--brand-ink)" }}>
-          IP Production
+          Insomniacs
         </div>
         <div className="text-[13px] font-extrabold leading-tight" style={{ color: "var(--brand-ink)" }}>
-          Command Center
+          Kitchen
         </div>
       </div>
       {items(user).map((item) => {
