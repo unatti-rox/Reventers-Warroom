@@ -73,6 +73,7 @@ async function main() {
   await deleteDiscontinuedBrands();
   await removeEditorsAndDesigners();
   await restoreEditorsAndDesigners();
+  await replaceC8Leaders();
 }
 
 /**
@@ -420,6 +421,26 @@ async function restoreEditorsAndDesigners() {
 
   await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
   console.log("Editors and designers restored (Oct 2026).");
+}
+
+/**
+ * C8's leadership moves from Ishika & Unatti to Harshil & Aditi. Creates
+ * both as new cohort leaders; leaderPersonId points to Harshil (the schema
+ * only tracks one person per cohort), with the display name covering both.
+ * Runs once (tracked by its own marker).
+ */
+async function replaceC8Leaders() {
+  const key = "c8-leaders-harshil-aditi.2026-10";
+  if (await prisma.appSetting.findUnique({ where: { key } })) return;
+
+  const harshil = await person("Harshil", "COHORT_LEADER");
+  await person("Aditi", "COHORT_LEADER");
+
+  const c8 = await prisma.cohort.findUniqueOrThrow({ where: { code: "C8" } });
+  await prisma.cohort.update({ where: { id: c8.id }, data: { leaderName: "Harshil & Aditi", leaderPersonId: harshil.id } });
+
+  await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });
+  console.log("C8 leadership replaced with Harshil & Aditi (Oct 2026).");
 }
 
 async function loadLaunchData() {
