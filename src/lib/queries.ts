@@ -40,18 +40,24 @@ export function cohortLabel(c: { code: string; leaderName: string }) {
   return `${c.code} · ${c.leaderName}`;
 }
 
-/** Each cohort's IP delivery for the month, from the Brand × IP matrix. */
+/** All logged pieces for a month: each tap of "Log it", plus whether it's live. */
+async function getPieces(monthKey: string) {
+  return prisma.piece.findMany({ where: { monthKey }, select: { brandId: true, ipId: true, live: true } });
+}
+
+/** Each cohort's IP delivery for the month: target from the matrix, achieved/live counted from logged pieces. */
 export async function getCohortOverview(monthKey: string) {
-  const [cohorts, cells] = await Promise.all([
+  const [cohorts, targets, pieces] = await Promise.all([
     getCohorts(monthKey),
-    prisma.brandIpMonth.findMany({ where: { monthKey }, select: { brandId: true, target: true, achieved: true, live: true } }),
+    prisma.brandIpMonth.findMany({ where: { monthKey }, select: { brandId: true, target: true } }),
+    getPieces(monthKey),
   ]);
   return cohorts.map((cohort) => {
     const brandIds = new Set(cohort.brands.map((b) => b.id));
-    const mine = cells.filter((c) => brandIds.has(c.brandId));
-    const target = mine.reduce((s, c) => s + c.target, 0);
-    const achieved = mine.reduce((s, c) => s + c.achieved, 0);
-    const live = mine.reduce((s, c) => s + c.live, 0);
+    const target = targets.filter((t) => brandIds.has(t.brandId)).reduce((s, t) => s + t.target, 0);
+    const mine = pieces.filter((p) => brandIds.has(p.brandId));
+    const achieved = mine.length;
+    const live = mine.filter((p) => p.live).length;
     return {
       id: cohort.id,
       code: cohort.code,
@@ -65,17 +71,18 @@ export async function getCohortOverview(monthKey: string) {
   });
 }
 
-/** Each IP's delivery for the month, from the Brand × IP matrix. */
+/** Each IP's delivery for the month: target from the matrix, achieved/live counted from logged pieces. */
 export async function getIpOverview(monthKey: string) {
-  const [ips, cells] = await Promise.all([
+  const [ips, targets, pieces] = await Promise.all([
     prisma.ip.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
-    prisma.brandIpMonth.findMany({ where: { monthKey }, select: { ipId: true, target: true, achieved: true, live: true } }),
+    prisma.brandIpMonth.findMany({ where: { monthKey }, select: { ipId: true, target: true } }),
+    getPieces(monthKey),
   ]);
   return ips.map((ip) => {
-    const mine = cells.filter((c) => c.ipId === ip.id);
-    const target = mine.reduce((s, c) => s + c.target, 0);
-    const achieved = mine.reduce((s, c) => s + c.achieved, 0);
-    const live = mine.reduce((s, c) => s + c.live, 0);
+    const target = targets.filter((t) => t.ipId === ip.id).reduce((s, t) => s + t.target, 0);
+    const mine = pieces.filter((p) => p.ipId === ip.id);
+    const achieved = mine.length;
+    const live = mine.filter((p) => p.live).length;
     return {
       id: ip.id,
       name: ip.name,
@@ -148,10 +155,10 @@ async function getIpAssignedCohortIds(ipId: string, monthKey: string, week: Week
 export async function getMyIpBrands(ipIds: string[], monthKey: string) {
   if (ipIds.length === 0) return [];
   const week = currentWeekKey();
-  const [ips, allBrands, cells] = await Promise.all([
+  const [ips, allBrands, pieces] = await Promise.all([
     prisma.ip.findMany({ where: { id: { in: ipIds } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
     prisma.brand.findMany({ where: activeIn(monthKey), orderBy: { name: "asc" }, include: { cohort: true } }),
-    prisma.brandIpMonth.findMany({ where: { monthKey, ipId: { in: ipIds } } }),
+    prisma.piece.findMany({ where: { monthKey, ipId: { in: ipIds } }, select: { brandId: true, ipId: true, live: true } }),
   ]);
   return Promise.all(
     ips.map(async (ip) => {
@@ -160,13 +167,13 @@ export async function getMyIpBrands(ipIds: string[], monthKey: string) {
       return {
         ip,
         brands: brands.map((brand) => {
-          const cell = cells.find((c) => c.ipId === ip.id && c.brandId === brand.id);
+          const mine = pieces.filter((p) => p.ipId === ip.id && p.brandId === brand.id);
           return {
             brandId: brand.id,
             brandName: brand.name,
             cohortCode: brand.cohort.code,
-            achieved: cell?.achieved ?? 0,
-            live: cell?.live ?? 0,
+            achieved: mine.length,
+            live: mine.filter((p) => p.live).length,
           };
         }),
       };
@@ -194,10 +201,28 @@ export async function getIpTeams() {
   });
 }
 
+type Cell = { target: number; achieved: number; live: number };
+
+/** Combines a month's set targets with its logged-piece counts into one brand+IP cell map. */
+function buildCellMap(targets: { brandId: string; ipId: string; target: number }[], pieces: { brandId: string; ipId: string; live: boolean }[]) {
+  const cellMap = new Map<string, Cell>();
+  for (const t of targets) {
+    cellMap.set(`${t.brandId}:${t.ipId}`, { target: t.target, achieved: 0, live: 0 });
+  }
+  for (const p of pieces) {
+    const key = `${p.brandId}:${p.ipId}`;
+    const cell = cellMap.get(key) ?? { target: 0, achieved: 0, live: 0 };
+    cell.achieved += 1;
+    if (p.live) cell.live += 1;
+    cellMap.set(key, cell);
+  }
+  return cellMap;
+}
+
 /** A cohort leader's own brands (across cohorts they lead), for the simple "My Brands" page. */
 export async function getMyTargetBrands(cohortIds: string[], monthKey: string) {
-  if (cohortIds.length === 0) return { brands: [], ips: [], cellMap: new Map<string, { target: number; achieved: number; live: number }>() };
-  const [cohorts, ips, cells] = await Promise.all([
+  if (cohortIds.length === 0) return { brands: [], ips: [], cellMap: new Map<string, Cell>() };
+  const [cohorts, ips, targets, pieces] = await Promise.all([
     prisma.cohort.findMany({
       where: { id: { in: cohortIds } },
       orderBy: { code: "asc" },
@@ -206,34 +231,39 @@ export async function getMyTargetBrands(cohortIds: string[], monthKey: string) {
     prisma.ip.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
     prisma.brandIpMonth.findMany({
       where: { monthKey, brand: { cohortId: { in: cohortIds } } },
-      select: { brandId: true, ipId: true, target: true, achieved: true, live: true },
+      select: { brandId: true, ipId: true, target: true },
+    }),
+    prisma.piece.findMany({
+      where: { monthKey, brand: { cohortId: { in: cohortIds } } },
+      select: { brandId: true, ipId: true, live: true },
     }),
   ]);
   const brands = cohorts.flatMap((c) => c.brands.map((b) => ({ id: b.id, name: b.name, cohortCode: c.code })));
-  const cellMap = new Map(cells.map((c) => [`${c.brandId}:${c.ipId}`, c]));
+  const cellMap = buildCellMap(targets, pieces);
   return { brands, ips, cellMap, multiCohort: cohorts.length > 1 };
 }
 
 export async function getMatrix(monthKey: string) {
-  const [cohorts, ips, cells] = await Promise.all([
+  const [cohorts, ips, targets, pieces] = await Promise.all([
     getCohorts(monthKey),
     prisma.ip.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
-    prisma.brandIpMonth.findMany({ where: { monthKey } }),
+    prisma.brandIpMonth.findMany({ where: { monthKey }, select: { brandId: true, ipId: true, target: true } }),
+    getPieces(monthKey),
   ]);
-  const cellMap = new Map(cells.map((c) => [`${c.brandId}:${c.ipId}`, c]));
+  const cellMap = buildCellMap(targets, pieces);
   return { cohorts, ips, cellMap };
 }
 
 export async function getRotationView(monthKey: string) {
   await getOrCreateCycle(monthKey);
-  const [cycle, teams, cohorts, ipMonth] = await Promise.all([
+  const [cycle, teams, cohorts, pieces] = await Promise.all([
     prisma.rotationCycle.findUniqueOrThrow({
       where: { monthKey },
       include: { entries: { include: { assignments: true } }, trades: true },
     }),
     getIpTeams(),
     prisma.cohort.findMany({ orderBy: { code: "asc" } }),
-    prisma.brandIpMonth.groupBy({ by: ["ipId"], where: { monthKey }, _sum: { achieved: true, live: true } }),
+    getPieces(monthKey),
   ]);
 
   const rows = teams.map((team) => {
@@ -247,8 +277,8 @@ export async function getRotationView(monthKey: string) {
       };
     }
     const monthTarget = WEEKS.reduce((s, w) => s + byWeek[w].target, 0);
-    const sums = ipMonth.find((m) => m.ipId === team.id)?._sum;
-    return { team, byWeek, monthTarget, achieved: sums?.achieved ?? 0, live: sums?.live ?? 0 };
+    const mine = pieces.filter((p) => p.ipId === team.id);
+    return { team, byWeek, monthTarget, achieved: mine.length, live: mine.filter((p) => p.live).length };
   });
 
   return { cycle, rows, cohorts };

@@ -1,22 +1,21 @@
 "use client";
 
 import { EditableNumber } from "@/components/EditableNumber";
-import { setBrandIpValue } from "@/lib/actions";
+import { setBrandIpTarget } from "@/lib/actions";
 
+/** Click-to-edit target for a brand + IP + month. Achieved/live are logged, not typed — see PieceLogControls. */
 export function BrandIpNumberCell({
   monthKey,
   brandId,
   ipId,
-  field,
   value,
   label,
 }: {
   monthKey: string;
   brandId: string;
   ipId: string;
-  field: "target" | "achieved" | "live";
   value: number;
   label: string;
 }) {
-  return <EditableNumber value={value} label={label} onCommit={(v) => setBrandIpValue(monthKey, brandId, ipId, field, v ?? 0)} />;
+  return <EditableNumber value={value} label={label} onCommit={(v) => setBrandIpTarget(monthKey, brandId, ipId, v ?? 0)} />;
 }

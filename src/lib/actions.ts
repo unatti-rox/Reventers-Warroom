@@ -105,30 +105,60 @@ export async function changePassword(_prev: ActionResult | null, form: FormData)
 
 /* ---------------- BRAND × IP MATRIX ---------------- */
 
-export async function setBrandIpValue(
-  monthKey: string,
-  brandId: string,
-  ipId: string,
-  field: "target" | "achieved" | "live",
-  value: number,
-) {
+export async function setBrandIpTarget(monthKey: string, brandId: string, ipId: string, value: number) {
   return run(async () => {
     const user = await actionUser();
     checkMonth(monthKey);
     const v = count(value);
     if (!user.isAdmin) {
       const cohortId = await brandCohortId(brandId);
-      const leads = user.cohortIds.includes(cohortId);
-      if (field === "target" && !leads) refuse("Only this brand's cohort leader sets its targets.");
-      if (field !== "target" && !leads && !user.ipcsIpIds.includes(ipId)) {
-        refuse("Only this brand's cohort leader or the IP's IP CS can update it.");
-      }
+      if (!user.cohortIds.includes(cohortId)) refuse("Only this brand's cohort leader sets its targets.");
     }
     await prisma.brandIpMonth.upsert({
       where: { monthKey_brandId_ipId: { monthKey, brandId, ipId } },
-      update: { [field]: v },
-      create: { monthKey, brandId, ipId, [field]: v },
+      update: { target: v },
+      create: { monthKey, brandId, ipId, target: v },
     });
+  });
+}
+
+async function assertCanLogPiece(user: CurrentUser, brandId: string, ipId: string) {
+  if (user.isAdmin) return;
+  const cohortId = await brandCohortId(brandId);
+  if (!user.cohortIds.includes(cohortId) && !user.ipcsIpIds.includes(ipId)) {
+    refuse("Only this brand's cohort leader or the IP's IP CS can log it.");
+  }
+}
+
+/** The core "Log it" action: one piece of IP content, made just now. No numbers to type. */
+export async function logPiece(monthKey: string, brandId: string, ipId: string) {
+  return run(async () => {
+    const user = await actionUser();
+    checkMonth(monthKey);
+    await assertCanLogPiece(user, brandId, ipId);
+    await prisma.piece.create({ data: { monthKey, brandId, ipId, loggedById: user.id } });
+  });
+}
+
+/** Marks the oldest not-yet-live piece for this brand + IP + month as live. */
+export async function markOneLive(monthKey: string, brandId: string, ipId: string) {
+  return run(async () => {
+    const user = await actionUser();
+    await assertCanLogPiece(user, brandId, ipId);
+    const piece = await prisma.piece.findFirst({ where: { monthKey, brandId, ipId, live: false }, orderBy: { createdAt: "asc" } });
+    if (!piece) refuse("Nothing logged yet to mark live.");
+    await prisma.piece.update({ where: { id: piece.id }, data: { live: true } });
+  });
+}
+
+/** Removes the most recently logged piece for this brand + IP + month - for fixing an accidental tap. */
+export async function undoLastPiece(monthKey: string, brandId: string, ipId: string) {
+  return run(async () => {
+    const user = await actionUser();
+    await assertCanLogPiece(user, brandId, ipId);
+    const piece = await prisma.piece.findFirst({ where: { monthKey, brandId, ipId }, orderBy: { createdAt: "desc" } });
+    if (!piece) refuse("Nothing to undo.");
+    await prisma.piece.delete({ where: { id: piece.id } });
   });
 }
 

@@ -80,6 +80,7 @@ model Brand {
 
   cohort         Cohort         @relation(fields: [cohortId], references: [id], onDelete: Cascade)
   ipMonths       BrandIpMonth[]
+  pieces         Piece[]
   plannedEntries PlannedEntry[]
   shoots         Shoot[]
 
@@ -95,6 +96,7 @@ model Ip {
 
   assignments          PersonAssignment[]
   brandMonths          BrandIpMonth[]
+  pieces               Piece[]
   rotationEntries      RotationEntry[]
   trades               Trade[]
   cohortWeeklyStatuses CohortWeeklyStatus[]
@@ -112,6 +114,7 @@ model Person {
   createdAt          DateTime @default(now())
 
   assignments   PersonAssignment[]
+  loggedPieces  Piece[]
   sessions      Session[]
   leadsCohorts  Cohort[]           @relation("CohortLeader")
 }
@@ -138,15 +141,15 @@ model PersonAssignment {
   @@unique([personId, ipId, role])
 }
 
-/// Brand x IP numbers for one month. Achieved here is the source of truth for IP output.
+/// The one number someone still sets ahead of time: how much of this IP a
+/// brand needs this month. Achieved/live are no longer stored here - they're
+/// counted from Piece, logged one at a time as the work actually happens.
 model BrandIpMonth {
   id        String   @id @default(cuid())
   monthKey  String
   brandId   String
   ipId      String
   target    Int      @default(0)
-  achieved  Int      @default(0)
-  live      Int      @default(0)
   updatedAt DateTime @updatedAt
 
   brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
@@ -154,6 +157,25 @@ model BrandIpMonth {
 
   @@unique([monthKey, brandId, ipId])
   @@index([monthKey])
+}
+
+/// One piece of IP content, logged the moment it's made. Achieved = count of
+/// rows for a brand+IP+month; live = count with live=true. No one types a
+/// number - the number is just how many times someone tapped "Log it."
+model Piece {
+  id         String   @id @default(cuid())
+  monthKey   String
+  brandId    String
+  ipId       String
+  live       Boolean  @default(false)
+  loggedById String?
+  createdAt  DateTime @default(now())
+
+  brand    Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  ip       Ip      @relation(fields: [ipId], references: [id], onDelete: Cascade)
+  loggedBy Person? @relation(fields: [loggedById], references: [id], onDelete: SetNull)
+
+  @@index([monthKey, brandId, ipId])
 }
 
 /// Admin overrides for one month: a different IP base target, or the achieved

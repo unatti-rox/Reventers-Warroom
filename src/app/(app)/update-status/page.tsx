@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { PageHeader, Card, CardHead } from "@/components/ui";
-import { BrandIpNumberCell } from "@/components/BrandIpNumberCell";
+import { PieceLogControls } from "@/components/PieceLogControls";
 import { getMyIpBrands } from "@/lib/queries";
 import { currentMonthKey, currentWeekKey, monthKeyLabel } from "@/lib/dates";
 import { requireUser } from "@/lib/auth";
@@ -28,8 +28,7 @@ export default async function UpdateStatusPage() {
             <div>
               <div className="flex items-center gap-3 px-5 py-2 border-b text-[9px] font-bold uppercase tracking-wide" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
                 <span className="flex-1">Brand</span>
-                <span className="w-20 text-right">Achieved</span>
-                <span className="w-20 text-right">Live</span>
+                <span className="text-right">Log it</span>
               </div>
               {brands.length === 0 && (
                 <div className="text-[11px] py-6 text-center" style={{ color: "var(--text-muted)" }}>
@@ -43,7 +42,7 @@ export default async function UpdateStatusPage() {
               {brands.map((b) => (
                 <div
                   key={b.brandId}
-                  className="flex items-center gap-3 px-5 py-2.5 border-b last:border-0"
+                  className="flex items-center gap-3 px-5 py-2.5 border-b last:border-0 flex-wrap"
                   style={{ borderColor: "var(--border)" }}
                 >
                   <div className="flex-1 min-w-0">
@@ -52,12 +51,7 @@ export default async function UpdateStatusPage() {
                       {b.cohortCode}
                     </div>
                   </div>
-                  <div className="w-20 text-right">
-                    <BrandIpNumberCell monthKey={monthKey} brandId={b.brandId} ipId={ip.id} field="achieved" value={b.achieved} label={`${b.brandName} achieved`} />
-                  </div>
-                  <div className="w-20 text-right">
-                    <BrandIpNumberCell monthKey={monthKey} brandId={b.brandId} ipId={ip.id} field="live" value={b.live} label={`${b.brandName} live`} />
-                  </div>
+                  <PieceLogControls monthKey={monthKey} brandId={b.brandId} ipId={ip.id} achieved={b.achieved} live={b.live} label={b.brandName} />
                 </div>
               ))}
             </div>

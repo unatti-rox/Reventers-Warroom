@@ -46,14 +46,19 @@ export async function getYearSummary(startYear: number) {
   const last = months[months.length - 1];
   const now = currentMonthKey();
 
-  const [settings, brands, monthSettings, matrix, festive, nonIp] = await Promise.all([
+  const [settings, brands, monthSettings, pieceTotals, pieceLive, festive, nonIp] = await Promise.all([
     getTargetSettings(),
     prisma.brand.findMany({ select: { addedMonthKey: true, archivedMonthKey: true } }),
     prisma.monthSetting.findMany({ where: { monthKey: { gte: first, lte: last } } }),
-    prisma.brandIpMonth.groupBy({
+    prisma.piece.groupBy({
       by: ["monthKey"],
       where: { monthKey: { gte: first, lte: last } },
-      _sum: { achieved: true, live: true },
+      _count: { _all: true },
+    }),
+    prisma.piece.groupBy({
+      by: ["monthKey"],
+      where: { monthKey: { gte: first, lte: last }, live: true },
+      _count: { _all: true },
     }),
     prisma.plannedEntry.groupBy({
       by: ["monthKey"],
@@ -77,8 +82,7 @@ export async function getYearSummary(startYear: number) {
       (b) => b.addedMonthKey && b.addedMonthKey <= monthKey && (!b.archivedMonthKey || b.archivedMonthKey > monthKey),
     ).length;
     const base = setting?.baseOverride ?? settings.baseMonthly + settings.perBrand * newBrands;
-    const m = matrix.find((x) => x.monthKey === monthKey);
-    const achieved = setting?.achievedOverride ?? m?._sum.achieved ?? 0;
+    const achieved = setting?.achievedOverride ?? pieceTotals.find((x) => x.monthKey === monthKey)?._count._all ?? 0;
     const backlogIn = carryKnown ? carry : null;
     const target = base + (backlogIn ?? 0);
     const f = festive.find((x) => x.monthKey === monthKey)?._sum;
@@ -97,7 +101,7 @@ export async function getYearSummary(startYear: number) {
       gap: timing === "future" ? null : target - achieved,
       festive: { achieved: f?.achieved ?? 0, live: f?.live ?? 0 },
       nonIp: { achieved: n?.achieved ?? 0, live: n?.live ?? 0 },
-      ipLive: m?._sum.live ?? 0,
+      ipLive: pieceLive.find((x) => x.monthKey === monthKey)?._count._all ?? 0,
     });
 
     // Only a finished month's shortfall is known and carried forward.
