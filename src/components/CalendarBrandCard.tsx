@@ -40,7 +40,7 @@ export function CalendarBrandCard({
             <div className="text-[12px] font-bold truncate">{e.title}</div>
             <div className="text-[9.5px]" style={{ color: "var(--text-muted)" }}>
               {e.kind === "REGULAR" ? e.ipName : e.kind === "FESTIVAL" ? e.festivalName : "Non-IP"}
-              {e.format ? ` · ${FORMAT_LABEL[e.format]}` : ""}
+              {e.format && FORMAT_LABEL[e.format] ? ` · ${FORMAT_LABEL[e.format]}` : ""}
             </div>
           </div>
           <div className="w-20 text-[11px] tabular-nums">{e.postDate}</div>
