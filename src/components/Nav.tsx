@@ -6,6 +6,7 @@ import { signOut } from "@/lib/actions";
 
 const DASHBOARD_NAV = { href: "/", label: "Dashboard" };
 const LOG_IT_NAV = { href: "/log", label: "Log it" };
+const WORKLOAD_NAV = { href: "/workload", label: "Weekly Load" };
 const SHOOT_SCHEDULE_NAV = { href: "/shoot-schedule", label: "Shoot Schedule" };
 const ADMIN_NAV = { href: "/admin", label: "Admin" };
 
@@ -14,7 +15,7 @@ type NavUser = { name: string; roleLabel: string; isAdmin: boolean; isIpcs: bool
 function items(user: NavUser) {
   const list = [DASHBOARD_NAV];
   if (user.isAdmin || user.isIpcs || user.isCohortLeader) list.push(LOG_IT_NAV);
-  list.push(SHOOT_SCHEDULE_NAV);
+  list.push(WORKLOAD_NAV, SHOOT_SCHEDULE_NAV);
   if (user.isAdmin) list.push(ADMIN_NAV);
   return list;
 }

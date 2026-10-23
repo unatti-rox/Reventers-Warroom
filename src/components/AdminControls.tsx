@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { EditableNumber } from "@/components/EditableNumber";
 import {
   addBrand,
@@ -399,8 +400,10 @@ export function AddIpForm() {
 /** Sets a cohort's fixed IPs (checkboxes), replacing weekly rotation. */
 export function CohortIpsForm({ cohortId, allIps, selected }: { cohortId: string; allIps: Option[]; selected: string[] }) {
   const [picked, setPicked] = useState<string[]>(selected);
+  const [saved, setSaved] = useState<string[]>(selected);
   const [pending, go] = useAction();
-  const dirty = picked.length !== selected.length || picked.some((id) => !selected.includes(id));
+  const router = useRouter();
+  const dirty = picked.length !== saved.length || picked.some((id) => !saved.includes(id));
   return (
     <div className="flex flex-wrap items-center gap-2 mt-1.5">
       {allIps.map((ip) => {
@@ -422,9 +425,26 @@ export function CohortIpsForm({ cohortId, allIps, selected }: { cohortId: string
         );
       })}
       {dirty && (
-        <Button type="button" pending={pending} onClick={() => go(() => setCohortIps(cohortId, picked))}>
+        <Button
+          type="button"
+          pending={pending}
+          onClick={() =>
+            go(
+              () => setCohortIps(cohortId, picked),
+              () => {
+                setSaved(picked);
+                router.refresh();
+              },
+            )
+          }
+        >
           Save IPs
         </Button>
+      )}
+      {!dirty && picked.length > 0 && (
+        <span className="text-[10px]" style={{ color: "var(--status-good)" }}>
+          Saved
+        </span>
       )}
     </div>
   );

@@ -266,6 +266,41 @@ export async function getIpTaskList(ipIds: string[]) {
   }));
 }
 
+/** W1 = due dates 1-7, W2 = 8-14, W3 = 15-21, W4 = 22 to month end. */
+function weekOfMonth(dateStr: string): 1 | 2 | 3 | 4 {
+  const day = Number(dateStr.slice(8, 10));
+  if (day <= 7) return 1;
+  if (day <= 14) return 2;
+  if (day <= 21) return 3;
+  return 4;
+}
+
+export type BucketWeeklyLoad = { ip: { id: string; name: string }; weeks: [number, number, number, number]; total: number };
+
+/**
+ * For every bucket, how many not-yet-live posts are due each week of the
+ * given month (due date = post date minus the buffer) - the view that
+ * answers "how many outputs does each bucket need this week" without
+ * anyone typing a number. Built straight from what cohort leaders planned.
+ */
+export async function getBucketWeeklyLoad(monthKey: string): Promise<BucketWeeklyLoad[]> {
+  const [bufferDays, ips, entries] = await Promise.all([
+    getCalendarBufferDays(),
+    prisma.ip.findMany({ where: { sortOrder: { lt: 1000 } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    prisma.calendarEntry.findMany({ where: { kind: EntryKind.REGULAR, status: { not: EntryStatus.LIVE } }, select: { ipId: true, postDate: true } }),
+  ]);
+  return ips.map((ip) => {
+    const weeks: [number, number, number, number] = [0, 0, 0, 0];
+    for (const e of entries) {
+      if (e.ipId !== ip.id) continue;
+      const dueDate = addDays(e.postDate, -bufferDays);
+      if (dueDate.slice(0, 7) !== monthKey) continue;
+      weeks[weekOfMonth(dueDate) - 1] += 1;
+    }
+    return { ip: { id: ip.id, name: ip.name }, weeks, total: weeks.reduce((s, n) => s + n, 0) };
+  });
+}
+
 /* ---------------- FESTIVE & NON-IP ---------------- */
 
 export async function getFestivals(includeInactive = false) {
