@@ -6,7 +6,7 @@ import { inputStyle, primaryButtonStyle } from "@/components/ui";
 import type { EntryKind, PlanFormat } from "@/generated/prisma/enums";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const FORMATS: PlanFormat[] = ["STORY", "REEL", "AV", "GIF"];
+export const FORMATS: PlanFormat[] = ["STORY", "REEL", "AV", "GIF"];
 export const FORMAT_LABEL: Record<PlanFormat, string> = { STORY: "Story", REEL: "Reel", AV: "AV", GIF: "GIF" };
 
 /** Plans one post: pick what kind it is, describe it, and say when it goes live. Logging the first one is how a brand's plan for the month gets built. */

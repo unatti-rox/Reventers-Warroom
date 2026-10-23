@@ -1,6 +1,7 @@
 import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { CalendarEntryControls, STATUS_LABEL, STATUS_COLOR } from "@/components/CalendarEntryControls";
 import { AddCalendarEntryForm, FORMAT_LABEL } from "@/components/AddCalendarEntryForm";
+import { UploadCalendarForm } from "@/components/UploadCalendarForm";
 import type { CalendarEntryRow } from "@/lib/queries";
 
 /** One brand's whole plan for the month: every post, in one place, plus the form to add more. */
@@ -54,6 +55,9 @@ export function CalendarBrandCard({
           Nothing planned for this brand yet.
         </div>
       )}
+      <div className="border-t px-5 py-3" style={{ borderColor: "var(--border)" }}>
+        <UploadCalendarForm brandId={brandId} monthKey={monthKey} ips={ips} festivals={festivals} />
+      </div>
       <div className="border-t" style={{ borderColor: "var(--border)" }}>
         <AddCalendarEntryForm brandId={brandId} ips={ips} festivals={festivals} defaultMonth={Number(monthKey.slice(5, 7))} />
       </div>
