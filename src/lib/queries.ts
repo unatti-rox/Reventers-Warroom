@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { PersonRole, EntryKind, EntryStatus, type PlanFormat } from "@/generated/prisma/enums";
+import { PersonRole, EntryKind, EntryStatus, IpCategory, type PlanFormat } from "@/generated/prisma/enums";
 import { currentMonthKey, addDays } from "@/lib/dates";
 import { OPEN, isDelivered, isPlanned } from "@/lib/entryStatus";
+import { outputKindOf, type OutputKind } from "@/lib/outputKind";
 
 /** Brands that count in a given month (not archived before it). */
 function activeIn(monthKey: string) {
@@ -59,12 +60,12 @@ function summarize(all: { status: EntryStatus }[]): Summary {
 export async function getCohortPerformance(monthKey: string) {
   const [cohorts, entries] = await Promise.all([
     getCohorts(monthKey),
-    prisma.calendarEntry.findMany({ where: { monthKey }, select: { brandId: true, kind: true, status: true } }),
+    prisma.calendarEntry.findMany({ where: { monthKey }, select: { brandId: true, kind: true, status: true, ip: { select: { category: true } } } }),
   ]);
   const breakdown = (rows: typeof entries) => ({
-    ip: summarize(rows.filter((e) => e.kind === EntryKind.REGULAR)),
-    nonIp: summarize(rows.filter((e) => e.kind === EntryKind.NON_IP)),
-    festive: summarize(rows.filter((e) => e.kind === EntryKind.FESTIVAL)),
+    ip: summarize(rows.filter((e) => outputKindOf(e) === "ip")),
+    nonIp: summarize(rows.filter((e) => outputKindOf(e) === "nonIp")),
+    festive: summarize(rows.filter((e) => outputKindOf(e) === "festive")),
     total: summarize(rows),
   });
   const rows = cohorts.map((cohort) => {
@@ -86,11 +87,11 @@ export async function getCohortPerformance(monthKey: string) {
   return { rows, all };
 }
 
-/** Each IP's delivery for the month, from the calendar. */
+/** Each IP bucket's delivery for the month, from the calendar (Non-IP and festive buckets aren't listed). */
 export async function getIpOverview(monthKey: string) {
   const [ips, entries] = await Promise.all([
     // Current content buckets only: old launch-era IP names sit at sortOrder >= 1000 (see applyContentBucketRelist in seed.ts).
-    prisma.ip.findMany({ where: { sortOrder: { lt: 1000 } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    prisma.ip.findMany({ where: { sortOrder: { lt: 1000 }, category: IpCategory.IP }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
     prisma.calendarEntry.findMany({ where: { monthKey, kind: EntryKind.REGULAR }, select: { ipId: true, status: true } }),
   ]);
   return ips.map((ip) => {
@@ -99,15 +100,14 @@ export async function getIpOverview(monthKey: string) {
   });
 }
 
-/** Festive & Non-IP totals for the month (the same calendar, just the other two kinds). */
 /** This month's planned / achieved / live, split into IP, Non-IP and Festive. */
 export async function getOutputByKind(monthKey: string) {
   const rows = await prisma.calendarEntry.findMany({
     where: { monthKey },
-    select: { kind: true, status: true },
+    select: { kind: true, status: true, ip: { select: { category: true } } },
   });
-  const sumBy = (kind: EntryKind) => summarize(rows.filter((r) => r.kind === kind));
-  return { ip: sumBy(EntryKind.REGULAR), nonIp: sumBy(EntryKind.NON_IP), festive: sumBy(EntryKind.FESTIVAL) };
+  const sumBy = (kind: OutputKind) => summarize(rows.filter((r) => outputKindOf(r) === kind));
+  return { ip: sumBy("ip"), nonIp: sumBy("nonIp"), festive: sumBy("festive") };
 }
 
 /** Every IP with who handles it, and which cohorts it's fixed to. */

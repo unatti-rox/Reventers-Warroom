@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
+import type { IpCategory } from "../src/generated/prisma/enums";
 import {
   cohortSeed,
   ipSeed,
@@ -439,21 +440,22 @@ async function addC8ToYoshitaKaranGroup() {
  * Admin -> Cohorts & Brands still needs each cohort re-paired to these.
  * Runs once (tracked by its own marker).
  */
-const CONTENT_BUCKETS = [
-  "Contests / Regular GIFs",
-  "Festive Reels / AV",
-  "Events",
-  "History / Brand Based Reels",
-  "AI Sample Flat / Walkthroughs",
-  "Sample Flat Photoshoot",
-  "Connectivity / Infrastructure",
-  "Teaser / Launch Reels and AVs",
-  "Location",
-  "Amenity / Project Reels",
-  "Construction",
-  "Unique USP",
-  "Living It",
-  "Bytes / Team Culture",
+const CONTENT_BUCKETS: [string, IpCategory][] = [
+  ["Contests / Regular GIFs", "NON_IP"],
+  ["Festive Reels / AV", "FESTIVE"],
+  ["Events", "IP"],
+  ["History", "IP"],
+  ["Brand Based Reels", "NON_IP"],
+  ["AI Sample Flat / Walkthroughs", "IP"],
+  ["Sample Flat Photoshoot", "IP"],
+  ["Connectivity / Infrastructure", "IP"],
+  ["Teaser / Launch Reels and AVs", "NON_IP"],
+  ["Location", "IP"],
+  ["Amenity / Project Reels", "NON_IP"],
+  ["Construction", "IP"],
+  ["Unique USP", "IP"],
+  ["Living It", "IP"],
+  ["Bytes / Team Culture", "IP"],
 ];
 
 async function applyContentBucketRelist() {
@@ -465,8 +467,8 @@ async function applyContentBucketRelist() {
     await prisma.ip.update({ where: { id: ip.id }, data: { sortOrder: ip.sortOrder + 1000 } });
   }
 
-  for (const [i, name] of CONTENT_BUCKETS.entries()) {
-    await prisma.ip.upsert({ where: { name }, update: { sortOrder: i + 1 }, create: { name, sortOrder: i + 1 } });
+  for (const [i, [name, category]] of CONTENT_BUCKETS.entries()) {
+    await prisma.ip.upsert({ where: { name }, update: { sortOrder: i + 1, category }, create: { name, sortOrder: i + 1, category } });
   }
 
   await prisma.appSetting.create({ data: { key, value: new Date().toISOString() } });

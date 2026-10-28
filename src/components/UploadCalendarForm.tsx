@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { parseCalendarScreenshot, addCalendarEntry } from "@/lib/actions";
 import { inputStyle, primaryButtonStyle } from "@/components/ui";
-import { FORMATS, FORMAT_LABEL } from "@/components/AddCalendarEntryForm";
+import { FORMATS, FORMAT_LABEL, BucketOptions, type BucketOption } from "@/components/AddCalendarEntryForm";
 import type { EntryKind, PlanFormat } from "@/generated/prisma/enums";
 
 const FESTIVAL = "festival";
@@ -37,7 +37,7 @@ export function UploadCalendarForm({
 }: {
   brandId: string;
   monthKey: string;
-  ips: { id: string; name: string }[];
+  ips: BucketOption[];
   festivals: { id: string; name: string }[];
 }) {
   const [drafts, setDrafts] = useState<DraftRow[] | null>(null);
@@ -138,12 +138,7 @@ export function UploadCalendarForm({
           <div key={d.key} className="flex flex-wrap items-center gap-1.5 py-1.5 border-b" style={{ borderColor: "var(--border)" }}>
             <select value={d.bucket} onChange={(e) => update(d.key, { bucket: e.target.value })} className="h-7 rounded border px-1.5 text-[10.5px] min-w-[150px]" style={d.bucket ? inputStyle : errorStyle} aria-label="Bucket">
               <option value="">{d.ipNameGuess ? `"${d.ipNameGuess}" — pick one` : "Pick a bucket…"}</option>
-              {ips.map((ip) => (
-                <option key={ip.id} value={ipValue(ip.id)}>
-                  {ip.name}
-                </option>
-              ))}
-              <option value={FESTIVAL}>Festival</option>
+              <BucketOptions ips={ips} />
             </select>
             {kind === "FESTIVAL" && (
               <select

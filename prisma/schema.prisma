@@ -89,10 +89,19 @@ model Brand {
   @@map("Client")
 }
 
+/// Which dashboard card a content bucket's posts count toward.
+enum IpCategory {
+  IP
+  NON_IP
+  /// Retired festive bucket: its posts count as Festive and it isn't offered when planning.
+  FESTIVE
+}
+
 model Ip {
-  id        String @id @default(cuid())
-  name      String @unique
-  sortOrder Int    @default(0)
+  id        String     @id @default(cuid())
+  name      String     @unique
+  sortOrder Int        @default(0)
+  category  IpCategory @default(IP)
 
   assignments     PersonAssignment[]
   calendarEntries CalendarEntry[]

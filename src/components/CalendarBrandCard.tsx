@@ -1,7 +1,7 @@
 import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { EntryStatusSelect, RemoveEntryButton } from "@/components/CalendarEntryControls";
 import { isDelivered, isPlanned } from "@/lib/entryStatus";
-import { AddCalendarEntryForm, FORMAT_LABEL } from "@/components/AddCalendarEntryForm";
+import { AddCalendarEntryForm, FORMAT_LABEL, type BucketOption } from "@/components/AddCalendarEntryForm";
 import { UploadCalendarForm } from "@/components/UploadCalendarForm";
 import type { CalendarEntryRow } from "@/lib/queries";
 
@@ -19,7 +19,7 @@ export function CalendarBrandCard({
   brandId: string;
   brandName: string;
   subtitle?: string;
-  ips: { id: string; name: string }[];
+  ips: BucketOption[];
   entries: CalendarEntryRow[];
   festivals: { id: string; name: string; dateLabel: string; month: number }[];
   monthKey: string;
