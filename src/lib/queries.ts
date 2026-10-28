@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { PersonRole, EntryKind, EntryStatus, IpCategory, type PlanFormat } from "@/generated/prisma/enums";
-import { currentMonthKey, addDays } from "@/lib/dates";
+import { currentMonthKey, addDays, todayDateStr } from "@/lib/dates";
 import { OPEN, isDelivered, isPlanned } from "@/lib/entryStatus";
 import { outputKindOf, type OutputKind } from "@/lib/outputKind";
 
@@ -55,14 +55,18 @@ function summarize(all: { status: EntryStatus }[]): Summary {
 /**
  * The dashboard's cohort performance table: per cohort (shown by its
  * account director), this month's IP, Non-IP and Festive delivered/planned
- * and the combined total, plus an all-cohorts row.
+ * and the combined total, plus an all-cohorts row. `late` counts planned
+ * posts whose date has passed and that aren't live yet - a cohort with any
+ * is behind schedule.
  */
 export async function getCohortPerformance(monthKey: string) {
   const [cohorts, entries] = await Promise.all([
     getCohorts(monthKey),
-    prisma.calendarEntry.findMany({ where: { monthKey }, select: { brandId: true, kind: true, status: true, ip: { select: { category: true } } } }),
+    prisma.calendarEntry.findMany({ where: { monthKey }, select: { brandId: true, kind: true, status: true, postDate: true, ip: { select: { category: true } } } }),
   ]);
+  const today = todayDateStr();
   const breakdown = (rows: typeof entries) => ({
+    late: rows.filter((e) => isPlanned(e.status) && e.status !== EntryStatus.LIVE && e.postDate < today).length,
     ip: summarize(rows.filter((e) => outputKindOf(e) === "ip")),
     nonIp: summarize(rows.filter((e) => outputKindOf(e) === "nonIp")),
     festive: summarize(rows.filter((e) => outputKindOf(e) === "festive")),

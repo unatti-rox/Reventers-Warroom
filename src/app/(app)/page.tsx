@@ -10,6 +10,18 @@ function statusColor(pct: number): string {
   return "var(--status-critical)";
 }
 
+/** Red when any planned post's date has passed without it going live; green when on schedule. */
+function paceColor(t: { late: number; target: number }): string {
+  if (t.late > 0) return "var(--status-critical)";
+  return t.target ? "var(--status-good)" : "var(--text-muted)";
+}
+
+function lateTitle(late: number): string | undefined {
+  return late > 0 ? `Behind schedule: ${late} post${late === 1 ? "" : "s"} past ${late === 1 ? "its" : "their"} date and not live yet` : undefined;
+}
+
+const behindRowStyle = { background: "color-mix(in srgb, var(--status-critical) 8%, transparent)" };
+
 /**
  * Everyone's shared visibility page: the same numbers for Ishika, IP CS, and
  * L2s alike — one dashboard, not a different view per role. Everything on
@@ -43,7 +55,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           {monthKeyLabel(monthKey, "long")} · Total output vs. scope
         </div>
         <div className="flex items-end gap-3 mt-2">
-          <div className="text-[48px] font-extrabold tabular-nums leading-none" style={{ color: statusColor(pct) }}>
+          <div className="text-[48px] font-extrabold tabular-nums leading-none" style={{ color: paceColor({ late: performance.all.late, target: floor.target }) }}>
             {pct}%
           </div>
           <div className="text-[13px] pb-2" style={{ color: "var(--text-muted)" }}>
@@ -51,7 +63,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           </div>
         </div>
         <div className="mt-4">
-          <ProgressBar pct={pct} color={statusColor(pct)} />
+          <ProgressBar pct={pct} color={paceColor({ late: performance.all.late, target: floor.target })} />
         </div>
         <div className="text-[10.5px] mt-2" style={{ color: "var(--text-muted)" }}>
           Total output on the floor: IP + Non-IP + Festive. Scope = every post planned on Log it for the month; rejected posts drop out.
@@ -71,7 +83,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <Card className="mb-5">
         <CardHead
           title="Cohort performance"
-          subtitle={`${monthKeyLabel(monthKey, "long")} · delivered / scope (scope = posts planned on Log it), by account director`}
+          subtitle={`${monthKeyLabel(monthKey, "long")} · delivered / scope (scope = posts planned on Log it), by account director · red = behind schedule (a post past its date isn't live)`}
         />
         <div className="overflow-auto">
           <table className="w-full border-collapse" style={{ minWidth: 820 }}>
@@ -89,9 +101,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </thead>
             <tbody>
               {performance.rows.map((r) => {
+                const t = { late: r.late, target: r.total.target };
                 return (
-                  <tr key={r.id}>
-                    <Td className="font-bold">
+                  <tr key={r.id} title={lateTitle(r.late)} style={r.late > 0 ? behindRowStyle : undefined}>
+                    <Td className="font-bold" style={{ color: r.late > 0 ? "var(--status-critical)" : undefined }}>
                       <span title={r.code}>{r.leaderName}</span>
                     </Td>
                     <Td align="right" className="tabular-nums">{r.brandCount}</Td>
@@ -99,11 +112,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                     <Td align="right" className="tabular-nums">{r.nonIp.achieved}/{r.nonIp.target}</Td>
                     <Td align="right" className="tabular-nums">{r.festive.achieved}/{r.festive.target}</Td>
                     <Td align="right" className="tabular-nums font-bold">{r.total.achieved}/{r.total.target}</Td>
-                    <Td align="right" className="tabular-nums font-bold" style={{ color: r.total.target ? statusColor(r.total.pct) : "var(--text-muted)" }}>
+                    <Td align="right" className="tabular-nums font-bold" style={{ color: paceColor(t) }}>
                       {r.total.target ? `${r.total.pct}%` : "—"}
                     </Td>
                     <Td className="min-w-[140px]">
-                      <ProgressBar pct={r.total.pct} color={statusColor(r.total.pct)} />
+                      <ProgressBar pct={r.total.pct} color={paceColor(t)} />
                     </Td>
                   </tr>
                 );
@@ -115,7 +128,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 <Td align="right" className="tabular-nums font-extrabold">{performance.all.nonIp.achieved}/{performance.all.nonIp.target}</Td>
                 <Td align="right" className="tabular-nums font-extrabold">{performance.all.festive.achieved}/{performance.all.festive.target}</Td>
                 <Td align="right" className="tabular-nums font-extrabold">{performance.all.total.achieved}/{performance.all.total.target}</Td>
-                <Td align="right" className="tabular-nums font-extrabold" style={{ color: performance.all.total.target ? statusColor(performance.all.total.pct) : "var(--text-muted)" }}>
+                <Td align="right" className="tabular-nums font-extrabold" style={{ color: paceColor({ late: performance.all.late, target: performance.all.total.target }) }}>
                   {performance.all.total.target ? `${performance.all.total.pct}%` : "—"}
                 </Td>
                 <Td />
