@@ -42,7 +42,7 @@ export function cohortLabel(c: { code: string; leaderName: string }) {
 
 type Summary = { target: number; achieved: number; live: number; pct: number };
 
-/** Target = how many entries are planned (rejected ones drop out); achieved = delivered (CTR or live); live = posted. No numbers typed anywhere - this is pure counting. */
+/** Target = how many entries are planned (rejected ones drop out); achieved = live = posted. No numbers typed anywhere - this is pure counting. */
 function summarize(all: { status: EntryStatus }[]): Summary {
   const entries = all.filter((e) => isPlanned(e.status));
   const target = entries.length;

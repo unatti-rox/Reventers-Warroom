@@ -6,7 +6,6 @@ import { inputStyle, primaryButtonStyle } from "@/components/ui";
 import { FORMATS, FORMAT_LABEL } from "@/components/AddCalendarEntryForm";
 import type { EntryKind, PlanFormat } from "@/generated/prisma/enums";
 
-const NON_IP = "nonip";
 const FESTIVAL = "festival";
 const ipValue = (id: string) => `ip:${id}`;
 
@@ -25,7 +24,6 @@ type DraftRow = {
 const errorStyle = { ...inputStyle, borderColor: "var(--status-critical)" };
 
 function bucketToKind(bucket: string): EntryKind {
-  if (bucket === NON_IP) return "NON_IP";
   if (bucket === FESTIVAL) return "FESTIVAL";
   return "REGULAR";
 }
@@ -71,7 +69,7 @@ export function UploadCalendarForm({
           r.entries.map((entry, i) => ({
             key: `${Date.now()}-${i}`,
             title: entry.title,
-            bucket: entry.kind === "REGULAR" ? (entry.ipId ? ipValue(entry.ipId) : "") : entry.kind === "FESTIVAL" ? FESTIVAL : NON_IP,
+            bucket: entry.kind === "REGULAR" ? (entry.ipId ? ipValue(entry.ipId) : "") : entry.kind === "FESTIVAL" ? FESTIVAL : "",
             ipNameGuess: entry.ipNameGuess,
             festivalId: entry.festivalId,
             festivalNameGuess: entry.festivalNameGuess,
@@ -146,7 +144,6 @@ export function UploadCalendarForm({
                 </option>
               ))}
               <option value={FESTIVAL}>Festival</option>
-              <option value={NON_IP}>Non-IP</option>
             </select>
             {kind === "FESTIVAL" && (
               <select

@@ -5,7 +5,7 @@ import { setEntryStatus, removeCalendarEntry } from "@/lib/actions";
 import { STATUS_OPTIONS, STATUS_LABEL, STATUS_MEANING, STATUS_COLOR } from "@/lib/entryStatus";
 import type { EntryStatus } from "@/generated/prisma/enums";
 
-/** Status dropdown for one post: WIP, ATR, CTR, Live or Rejected. */
+/** Status dropdown for one post: WIP, Live or Rejected. */
 export function EntryStatusSelect({ entryId, status }: { entryId: string; status: EntryStatus }) {
   const [pending, startTransition] = useTransition();
   return (
