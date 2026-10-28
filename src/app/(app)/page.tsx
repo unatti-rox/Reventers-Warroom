@@ -2,7 +2,8 @@ import Link from "next/link";
 import { PageHeader, Card, CardHead, ProgressBar, KpiTile, Th, Td } from "@/components/ui";
 import { getCohortPerformance, getIpOverview, getOutputByKind } from "@/lib/queries";
 import { getYearSummary } from "@/lib/targets";
-import { currentMonthKey, monthKeyLabel, yearStartFor } from "@/lib/dates";
+import { currentMonthKey, monthKeyLabel, yearMonths, yearStartFor } from "@/lib/dates";
+import { MonthSwitcher } from "@/components/Switchers";
 import { requireUser } from "@/lib/auth";
 
 function statusColor(pct: number): string {
@@ -16,22 +17,28 @@ function statusColor(pct: number): string {
  * L2s alike — one dashboard, not a different view per role. Everything on
  * it is computed from the calendar; nothing here is typed in.
  */
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
   await requireUser();
 
-  const monthKey = currentMonthKey();
+  const params = await searchParams;
+  const now = currentMonthKey();
+  const monthKey = params.month && /^\d{4}-\d{2}$/.test(params.month) ? params.month : now;
   const [performance, ips, year, byKind] = await Promise.all([
     getCohortPerformance(monthKey),
     getIpOverview(monthKey),
     getYearSummary(yearStartFor(monthKey)),
     getOutputByKind(monthKey),
   ]);
-  const current = year.current;
+  const current = year.rows.find((r) => r.monthKey === monthKey) ?? null;
   const pct = current && current.target ? Math.min(100, Math.round((current.achieved / current.target) * 100)) : 0;
 
   return (
     <div>
-      <PageHeader title="Dashboard" subtitle="Everything that's been logged this month, at a glance" />
+      <PageHeader
+        title="Dashboard"
+        subtitle="Everything that's been logged for the month, at a glance"
+        right={<MonthSwitcher monthKeys={yearMonths(yearStartFor(now))} current={monthKey} />}
+      />
 
       <Card className="p-6 mb-5">
         <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
@@ -64,7 +71,7 @@ export default async function DashboardPage() {
           { label: "Non-IP", t: byKind.nonIp },
           { label: "Festive", t: byKind.festive },
         ].map(({ label, t }) => (
-          <KpiTile key={label} label={label} value={`${t.achieved} / ${t.target}`} meta={`${t.pct}% done · ${t.live} live this month`} />
+          <KpiTile key={label} label={label} value={`${t.achieved} / ${t.target}`} meta={`${t.pct}% done · ${t.live} live`} />
         ))}
       </div>
 
