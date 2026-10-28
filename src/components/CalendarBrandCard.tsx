@@ -1,6 +1,7 @@
 import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { EntryStatusSelect, RemoveEntryButton } from "@/components/CalendarEntryControls";
 import { isDelivered, isPlanned } from "@/lib/entryStatus";
+import { paceOf, PACE_COLOR } from "@/lib/pace";
 import { AddCalendarEntryForm, FORMAT_LABEL, type BucketOption } from "@/components/AddCalendarEntryForm";
 import type { CalendarEntryRow } from "@/lib/queries";
 
@@ -26,9 +27,14 @@ export function CalendarBrandCard({
 }) {
   const planned = entries.filter((e) => isPlanned(e.status));
   const done = planned.filter((e) => isDelivered(e.status)).length;
+  const pace = paceOf(entries);
 
   return (
-    <CollapsibleCard title={brandName} subtitle={subtitle} meta={`${done} / ${planned.length}`} defaultOpen={defaultOpen}>
+    <CollapsibleCard title={brandName} subtitle={subtitle} meta={`${done} / ${planned.length}`}
+      metaColor={pace.pace === "none" ? undefined : PACE_COLOR[pace.pace]}
+      metaTitle={pace.note}
+      defaultOpen={defaultOpen}
+    >
       <div className="flex items-center gap-3 px-5 py-2 border-b text-[9px] font-bold uppercase tracking-wide" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
         <span className="flex-1">Post</span>
         <span className="w-20">Date</span>

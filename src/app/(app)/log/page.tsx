@@ -5,6 +5,7 @@ import { TaskListRow } from "@/components/TaskListRow";
 import { getCalendarCohortView, getIpTaskList, getFestivals } from "@/lib/queries";
 import { currentMonthKey, monthKeyLabel, yearMonths, yearStartFor, daysFromToday } from "@/lib/dates";
 import { requireUser } from "@/lib/auth";
+import { paceOf, PACE_COLOR, PACE_LABEL, SLIPPING_DAYS } from "@/lib/pace";
 
 function urgency(dueDate: string): { label: string; color: string } {
   const days = daysFromToday(dueDate);
@@ -65,33 +66,48 @@ export default async function LogItPage({ searchParams }: { searchParams: Promis
       ))}
 
       {calendarView &&
-        calendarView.map((cohort) => (
-          <div key={cohort.id} className="mb-6">
-            <h2 className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
-              {cohort.code} · {cohort.leaderName}
-            </h2>
-            {cohort.brands.map((brand) => (
-              <CalendarBrandCard
-                key={brand.id}
-                brandId={brand.id}
-                brandName={brand.name}
-                ips={cohort.ips}
-                entries={brand.entries}
-                festivals={festivals}
-                monthKey={monthKey}
-              />
-            ))}
-            {cohort.brands.length === 0 && (
-              <div className="text-[11px] py-3" style={{ color: "var(--text-muted)" }}>
-                No brands in this cohort yet.
-              </div>
-            )}
-          </div>
-        ))}
+        calendarView.map((cohort) => {
+          const pace = paceOf(cohort.brands.flatMap((b) => b.entries));
+          return (
+            <div key={cohort.id} className="mb-6">
+              <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
+                {cohort.code} · {cohort.leaderName}
+                {pace.pace !== "none" && (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9.5px] normal-case tracking-normal"
+                    style={{ color: PACE_COLOR[pace.pace], background: `color-mix(in srgb, ${PACE_COLOR[pace.pace]} 12%, transparent)` }}
+                    title={pace.note}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: PACE_COLOR[pace.pace] }} />
+                    {PACE_LABEL[pace.pace]}
+                    {pace.late > 0 ? ` · ${pace.late} late` : ""}
+                  </span>
+                )}
+              </h2>
+              {cohort.brands.map((brand) => (
+                <CalendarBrandCard
+                  key={brand.id}
+                  brandId={brand.id}
+                  brandName={brand.name}
+                  ips={cohort.ips}
+                  entries={brand.entries}
+                  festivals={festivals}
+                  monthKey={monthKey}
+                />
+              ))}
+              {cohort.brands.length === 0 && (
+                <div className="text-[11px] py-3" style={{ color: "var(--text-muted)" }}>
+                  No brands in this cohort yet.
+                </div>
+              )}
+            </div>
+          );
+        })}
 
       {calendarView && (
         <p className="text-[10.5px] mt-2 text-center" style={{ color: "var(--text-muted)" }}>
-          Plan {monthKeyLabel(monthKey)}&apos;s posts here — switch the month above to get next month&apos;s calendar in early.
+          Plan {monthKeyLabel(monthKey)}&apos;s posts here — switch the month above to get next month&apos;s calendar in early. Green = every post
+          past its date is live · orange = posts up to {SLIPPING_DAYS} days late · red = later than that.
         </p>
       )}
     </div>

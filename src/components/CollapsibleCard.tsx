@@ -7,12 +7,17 @@ export function CollapsibleCard({
   title,
   subtitle,
   meta,
+  metaColor,
+  metaTitle,
   defaultOpen = false,
   children,
 }: {
   title: string;
   subtitle?: string;
   meta?: string;
+  /** Colours the summary number (and a dot beside it), e.g. by pace. */
+  metaColor?: string;
+  metaTitle?: string;
   defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
@@ -35,7 +40,8 @@ export function CollapsibleCard({
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {meta ? (
-            <span className="text-[11px] font-bold tabular-nums" style={{ color: "var(--text-muted)" }}>
+            <span className="flex items-center gap-1.5 text-[11px] font-bold tabular-nums" style={{ color: metaColor ?? "var(--text-muted)" }} title={metaTitle}>
+              {metaColor ? <span className="w-2 h-2 rounded-full" style={{ background: metaColor }} /> : null}
               {meta}
             </span>
           ) : null}
