@@ -78,7 +78,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <Card className="mb-5">
         <CardHead
           title="Cohort performance"
-          subtitle={`${monthKeyLabel(monthKey, "long")} · delivered / planned, by account director`}
+          subtitle={`${monthKeyLabel(monthKey, "long")} · delivered / scope (scope = posts planned on Log it), by account director`}
         />
         <div className="overflow-auto">
           <table className="w-full border-collapse" style={{ minWidth: 820 }}>
@@ -89,7 +89,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 <Th align="right">IP</Th>
                 <Th align="right">Non-IP</Th>
                 <Th align="right">Festive</Th>
-                <Th align="right">Delivered / Target</Th>
+                <Th align="right">Delivered / Scope</Th>
                 <Th align="right">%</Th>
                 <Th>Progress</Th>
               </tr>
