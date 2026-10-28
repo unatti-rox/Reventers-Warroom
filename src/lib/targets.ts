@@ -5,6 +5,8 @@ import { currentMonthKey, yearMonths } from "@/lib/dates";
 
 export const DEFAULT_BASE = 192;
 export const DEFAULT_PER_BRAND = 4;
+/** First month whose shortfall carries forward. Earlier months weren't logged here, so they add no backlog. */
+export const BACKLOG_FROM = "2026-11";
 
 export async function getTargetSettings() {
   const rows = await prisma.appSetting.findMany({ where: { key: { in: ["target.baseMonthly", "target.perBrand"] } } });
@@ -42,7 +44,8 @@ export type YearRow = {
  * The target covers total output on the floor: IP + Non-IP + Festive.
  * Target = base + the previous month's shortfall. A shortfall carries
  * forward (target − achieved, if positive); a surplus never lowers later
- * targets. The carry starts fresh each June.
+ * targets. The carry starts fresh each June, and months before
+ * BACKLOG_FROM never carry anything.
  */
 export async function getYearSummary(startYear: number) {
   const months = yearMonths(startYear);
@@ -126,7 +129,7 @@ export async function getYearSummary(startYear: number) {
 
     // Only a finished month's shortfall is known and carried forward.
     if (timing === "past" && carryKnown) {
-      carry = Math.max(0, target - achieved);
+      carry = monthKey < BACKLOG_FROM ? 0 : Math.max(0, target - achieved);
     } else {
       carryKnown = false;
     }
