@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { PersonRole, EntryKind, EntryStatus, IpCategory, type PlanFormat } from "@/generated/prisma/enums";
-import { currentMonthKey, addDays, todayDateStr } from "@/lib/dates";
+import { currentMonthKey, addDays, todayDateStr, daysFromToday } from "@/lib/dates";
 import { OPEN, isDelivered, isPlanned } from "@/lib/entryStatus";
 import { outputKindOf, type OutputKind } from "@/lib/outputKind";
 
@@ -52,12 +52,23 @@ function summarize(all: { status: EntryStatus }[]): Summary {
   return { target, achieved, live, pct: target ? Math.min(100, Math.round((achieved / target) * 100)) : 0 };
 }
 
+/** How many days late a post can be before its cohort counts as behind rather than slipping. */
+export const SLIPPING_DAYS = 2;
+
+export type Pace = "none" | "onTrack" | "slipping" | "behind";
+
+function pace(late: { postDate: string }[]): { late: number; daysLate: number; pace: Pace } {
+  const daysLate = late.reduce((max, e) => Math.max(max, -daysFromToday(e.postDate)), 0);
+  return { late: late.length, daysLate, pace: late.length === 0 ? "onTrack" : daysLate <= SLIPPING_DAYS ? "slipping" : "behind" };
+}
+
 /**
  * The dashboard's cohort performance table: per cohort (shown by its
  * account director), this month's IP, Non-IP and Festive delivered/planned
  * and the combined total, plus an all-cohorts row. `late` counts planned
- * posts whose date has passed and that aren't live yet - a cohort with any
- * is behind schedule.
+ * posts whose date has passed and that aren't live yet, and `pace` grades
+ * the cohort: on track (none late), slipping (late by at most
+ * SLIPPING_DAYS) or behind (any later than that).
  */
 export async function getCohortPerformance(monthKey: string) {
   const [cohorts, entries] = await Promise.all([
@@ -66,7 +77,7 @@ export async function getCohortPerformance(monthKey: string) {
   ]);
   const today = todayDateStr();
   const breakdown = (rows: typeof entries) => ({
-    late: rows.filter((e) => isPlanned(e.status) && e.status !== EntryStatus.LIVE && e.postDate < today).length,
+    ...pace(rows.filter((e) => isPlanned(e.status) && e.status !== EntryStatus.LIVE && e.postDate < today)),
     ip: summarize(rows.filter((e) => outputKindOf(e) === "ip")),
     nonIp: summarize(rows.filter((e) => outputKindOf(e) === "nonIp")),
     festive: summarize(rows.filter((e) => outputKindOf(e) === "festive")),
