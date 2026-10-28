@@ -49,17 +49,39 @@ function summarize(entries: { status: EntryStatus }[]): Summary {
   return { target, achieved, live, pct: target ? Math.min(100, Math.round((achieved / target) * 100)) : 0 };
 }
 
-/** Each cohort's IP delivery for the month, from the calendar. */
-export async function getCohortOverview(monthKey: string) {
+/**
+ * The dashboard's cohort performance table: per cohort (shown by its
+ * account director), this month's IP, Non-IP and Festive delivered/planned
+ * and the combined total, plus an all-cohorts row.
+ */
+export async function getCohortPerformance(monthKey: string) {
   const [cohorts, entries] = await Promise.all([
     getCohorts(monthKey),
-    prisma.calendarEntry.findMany({ where: { monthKey, kind: EntryKind.REGULAR }, select: { brandId: true, status: true } }),
+    prisma.calendarEntry.findMany({ where: { monthKey }, select: { brandId: true, kind: true, status: true } }),
   ]);
-  return cohorts.map((cohort) => {
-    const brandIds = new Set(cohort.brands.map((b) => b.id));
-    const mine = entries.filter((e) => brandIds.has(e.brandId));
-    return { id: cohort.id, code: cohort.code, leaderName: cohort.leaderName, brandCount: cohort.brands.length, ...summarize(mine) };
+  const breakdown = (rows: typeof entries) => ({
+    ip: summarize(rows.filter((e) => e.kind === EntryKind.REGULAR)),
+    nonIp: summarize(rows.filter((e) => e.kind === EntryKind.NON_IP)),
+    festive: summarize(rows.filter((e) => e.kind === EntryKind.FESTIVAL)),
+    total: summarize(rows),
   });
+  const rows = cohorts.map((cohort) => {
+    const brandIds = new Set(cohort.brands.map((b) => b.id));
+    return {
+      id: cohort.id,
+      code: cohort.code,
+      leaderName: cohort.leaderName,
+      brandCount: cohort.brands.length,
+      ...breakdown(entries.filter((e) => brandIds.has(e.brandId))),
+    };
+  });
+  rows.sort((x, y) => x.leaderName.localeCompare(y.leaderName));
+  const allBrandIds = new Set(cohorts.flatMap((c) => c.brands.map((b) => b.id)));
+  const all = {
+    brandCount: allBrandIds.size,
+    ...breakdown(entries.filter((e) => allBrandIds.has(e.brandId))),
+  };
+  return { rows, all };
 }
 
 /** Each IP's delivery for the month, from the calendar. */
@@ -106,28 +128,6 @@ export async function getIpTeams() {
       cohorts: ip.cohorts,
     };
   });
-}
-
-type Cell = { target: number; achieved: number; live: number };
-
-/** The full brand × IP read view, for the Dashboard's drill-down table. */
-export async function getMatrix(monthKey: string) {
-  const [cohorts, ips, entries] = await Promise.all([
-    getCohorts(monthKey),
-    prisma.ip.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
-    prisma.calendarEntry.findMany({ where: { monthKey, kind: EntryKind.REGULAR }, select: { brandId: true, ipId: true, status: true } }),
-  ]);
-  const cellMap = new Map<string, Cell>();
-  for (const e of entries) {
-    if (!e.ipId) continue;
-    const key = `${e.brandId}:${e.ipId}`;
-    const cell = cellMap.get(key) ?? { target: 0, achieved: 0, live: 0 };
-    cell.target += 1;
-    if (e.status !== EntryStatus.PENDING) cell.achieved += 1;
-    if (e.status === EntryStatus.LIVE) cell.live += 1;
-    cellMap.set(key, cell);
-  }
-  return { cohorts, ips, cellMap };
 }
 
 /* ---------------- CALENDAR (the one input surface) ---------------- */
