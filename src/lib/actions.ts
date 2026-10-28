@@ -6,11 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { actionAdmin, actionUser, createSession, destroySession, getCurrentUser, type CurrentUser } from "@/lib/auth";
 import { hashPassword, temporaryPassword, verifyPassword } from "@/lib/password";
 import { currentMonthKey } from "@/lib/dates";
-import { parseCalendarImage, type ParsedEntry } from "@/lib/calendarAi";
 import { STATUS_OPTIONS } from "@/lib/entryStatus";
 import { AppRole, PersonRole, PlanFormat, EntryKind, EntryStatus } from "@/generated/prisma/enums";
 
-export type { ParsedEntry };
 
 /** Actions return a message instead of throwing: production builds hide thrown error text. */
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -189,45 +187,6 @@ export async function setCalendarBuffer(days: number) {
     const v = count(days);
     await prisma.appSetting.upsert({ where: { key: "calendar.bufferDays" }, update: { value: String(v) }, create: { key: "calendar.bufferDays", value: String(v) } });
   });
-}
-
-export type ParseScreenshotResult = { ok: true; entries: ParsedEntry[] } | { ok: false; error: string };
-
-/** Reads a calendar screenshot and drafts its planned posts. Nothing is saved - the caller reviews/edits these, then calls addCalendarEntry for each. */
-export async function parseCalendarScreenshot(brandId: string, imageBase64: string, mediaType: string, monthKey: string): Promise<ParseScreenshotResult> {
-  try {
-    const user = await actionUser();
-    await assertLeadsBrand(user, brandId);
-    checkMonth(monthKey);
-    if (!imageBase64 || imageBase64.length > 7_000_000) refuse("That image is too large — try a screenshot under 5MB.");
-
-    const brand = await prisma.brand.findUnique({ where: { id: brandId }, select: { cohortId: true } });
-    if (!brand) refuse("That brand no longer exists.");
-    const [cohort, festivals] = await Promise.all([
-      prisma.cohort.findUnique({ where: { id: brand.cohortId }, include: { ips: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] } } }),
-      prisma.festival.findMany({ where: { active: true } }),
-    ]);
-
-    let entries: ParsedEntry[];
-    try {
-      entries = await parseCalendarImage({
-        imageBase64,
-        mediaType,
-        monthKey,
-        ipOptions: cohort?.ips.filter((ip) => ip.category !== "FESTIVE").map((ip) => ({ id: ip.id, name: ip.name })) ?? [],
-        festivalOptions: festivals.map((f) => ({ id: f.id, name: f.name })),
-      });
-    } catch (e) {
-      refuse(e instanceof Error ? e.message : "Couldn't read that image. Please try again.");
-    }
-    if (entries.length === 0) refuse("Couldn't find any planned posts in that image — try a clearer screenshot.");
-    return { ok: true, entries };
-  } catch (e) {
-    if (e instanceof Refused) return { ok: false, error: e.message };
-    if (e instanceof Error && /sign in again|cohort's brands|Invalid month/.test(e.message)) return { ok: false, error: e.message };
-    console.error(e);
-    return { ok: false, error: "Couldn't read that image. Please try again." };
-  }
 }
 
 /* ---------------- SHOOT SCHEDULE ---------------- */
