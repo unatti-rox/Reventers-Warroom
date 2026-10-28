@@ -325,7 +325,7 @@ export async function getShootsView(monthKey: string) {
   const [cohorts, ips, shoots] = await Promise.all([
     getCohorts(monthKey),
     prisma.ip.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
-    prisma.shoot.findMany({ where: { date: { startsWith: monthKey } }, orderBy: { date: "asc" } }),
+    prisma.shoot.findMany({ where: { date: { startsWith: monthKey } }, orderBy: [{ date: "asc" }, { time: "asc" }] }),
   ]);
   return { cohorts, ips, shoots };
 }

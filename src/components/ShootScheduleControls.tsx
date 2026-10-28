@@ -18,10 +18,10 @@ export function ShootTextCell({
   label,
 }: {
   shootId: string;
-  field: "date" | "remarks";
+  field: "date" | "time" | "cs" | "remarks";
   value: string;
   editable: boolean;
-  type?: "text" | "date";
+  type?: "text" | "date" | "time";
   allowEmpty?: boolean;
   label: string;
 }) {
@@ -187,6 +187,8 @@ export function AddShootForm({
   const [brandId, setBrandId] = useState(brands[0]?.id ?? "");
   const [ipId, setIpId] = useState(ips[0]?.id ?? "");
   const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [cs, setCs] = useState("");
   const [dop, setDop] = useState(DOP_PEOPLE[0]);
   const [socialMediaPerson, setSocialMediaPerson] = useState(SOCIAL_MEDIA_PEOPLE[0]);
   const [remarks, setRemarks] = useState("");
@@ -203,10 +205,12 @@ export function AddShootForm({
           return;
         }
         startTransition(async () => {
-          const r = await addShoot(cohortId, brandId, ipId, date, dop, socialMediaPerson, remarks);
+          const r = await addShoot(cohortId, brandId, ipId, date, time, dop, socialMediaPerson, cs, remarks);
           if (!r.ok) alert(r.error);
           else {
             setDate("");
+            setTime("");
+            setCs("");
             setDop(DOP_PEOPLE[0]);
             setSocialMediaPerson(SOCIAL_MEDIA_PEOPLE[0]);
             setRemarks("");
@@ -247,6 +251,7 @@ export function AddShootForm({
         ))}
       </select>
       <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 rounded-lg border px-2 text-[11px]" style={inputStyle} aria-label="Date" />
+      <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="h-9 rounded-lg border px-2 text-[11px]" style={inputStyle} aria-label="Time" title="Shoot time (optional)" />
       <select value={dop} onChange={(e) => setDop(e.target.value)} className="h-9 rounded-lg border px-2 text-[11px]" style={inputStyle} aria-label="DOP">
         {DOP_PEOPLE.map((p) => (
           <option key={p} value={p}>
@@ -267,6 +272,16 @@ export function AddShootForm({
           </option>
         ))}
       </select>
+      <input
+        type="text"
+        value={cs}
+        onChange={(e) => setCs(e.target.value)}
+        placeholder="CS"
+        maxLength={80}
+        className="h-9 rounded-lg border px-2.5 text-[11px] w-[120px]"
+        style={inputStyle}
+        aria-label="CS"
+      />
       <input
         type="text"
         value={remarks}

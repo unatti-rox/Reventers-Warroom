@@ -209,6 +209,10 @@ model Shoot {
   date              String
   dop               String
   socialMediaPerson String
+  /// Client servicing person for the shoot (free text until the CS list is set).
+  cs                String   @default("")
+  /// Start time, "HH:MM" (24h); "" if not set. Lets one DOP cover two shoots on the same date.
+  time              String   @default("")
   remarks           String   @default("")
   createdAt         DateTime @default(now())
 
