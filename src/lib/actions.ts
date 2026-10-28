@@ -7,6 +7,7 @@ import { actionAdmin, actionUser, createSession, destroySession, getCurrentUser,
 import { hashPassword, temporaryPassword, verifyPassword } from "@/lib/password";
 import { currentMonthKey } from "@/lib/dates";
 import { STATUS_OPTIONS } from "@/lib/entryStatus";
+import { isShootIp } from "@/lib/shootIps";
 import { AppRole, PersonRole, PlanFormat, EntryKind, EntryStatus } from "@/generated/prisma/enums";
 
 
@@ -209,7 +210,8 @@ export async function addShoot(
     if (time && !HHMM.test(time)) refuse("Pick a valid time.");
     const brand = await prisma.brand.findUnique({ where: { id: brandId } });
     if (!brand || brand.cohortId !== cohortId) refuse("Pick a brand from this cohort.");
-    if (!(await prisma.ip.findUnique({ where: { id: ipId } }))) refuse("Pick an IP.");
+    const ip = await prisma.ip.findUnique({ where: { id: ipId } });
+    if (!ip || !isShootIp(ip.name)) refuse("Pick an IP that needs a shoot.");
     await prisma.shoot.create({
       data: {
         cohortId,
@@ -241,7 +243,8 @@ export async function updateShoot(
       if (!DAY.test(value)) refuse("Pick a valid date.");
       v = value;
     } else if (field === "ipId") {
-      if (!(await prisma.ip.findUnique({ where: { id: value } }))) refuse("Pick an IP.");
+      const ip = await prisma.ip.findUnique({ where: { id: value } });
+      if (!ip || !isShootIp(ip.name)) refuse("Pick an IP that needs a shoot.");
       v = value;
     } else if (field === "brandId") {
       const brand = await prisma.brand.findUnique({ where: { id: value } });
