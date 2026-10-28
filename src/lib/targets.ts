@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { EntryKind, EntryStatus } from "@/generated/prisma/enums";
+import { EntryStatus } from "@/generated/prisma/enums";
 import { DELIVERED } from "@/lib/entryStatus";
+import { outputKindOf, type OutputKind } from "@/lib/outputKind";
 import { currentMonthKey, yearMonths } from "@/lib/dates";
 
 export const DEFAULT_BASE = 192;
@@ -50,41 +51,24 @@ export async function getYearSummary(startYear: number) {
   const last = months[months.length - 1];
   const now = currentMonthKey();
 
-  const [settings, brands, monthSettings, pieceTotals, pieceLive, festiveTotals, festiveLive, nonIpTotals, nonIpLive] = await Promise.all([
+  const [settings, brands, monthSettings, delivered] = await Promise.all([
     getTargetSettings(),
     prisma.brand.findMany({ select: { addedMonthKey: true, archivedMonthKey: true } }),
     prisma.monthSetting.findMany({ where: { monthKey: { gte: first, lte: last } } }),
-    prisma.calendarEntry.groupBy({
-      by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.REGULAR, status: { in: DELIVERED } },
-      _count: { _all: true },
-    }),
-    prisma.calendarEntry.groupBy({
-      by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.REGULAR, status: EntryStatus.LIVE },
-      _count: { _all: true },
-    }),
-    prisma.calendarEntry.groupBy({
-      by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.FESTIVAL, status: { in: DELIVERED } },
-      _count: { _all: true },
-    }),
-    prisma.calendarEntry.groupBy({
-      by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.FESTIVAL, status: EntryStatus.LIVE },
-      _count: { _all: true },
-    }),
-    prisma.calendarEntry.groupBy({
-      by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.NON_IP, status: { in: DELIVERED } },
-      _count: { _all: true },
-    }),
-    prisma.calendarEntry.groupBy({
-      by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.NON_IP, status: EntryStatus.LIVE },
-      _count: { _all: true },
+    prisma.calendarEntry.findMany({
+      where: { monthKey: { gte: first, lte: last }, status: { in: DELIVERED } },
+      select: { monthKey: true, kind: true, status: true, ip: { select: { category: true } } },
     }),
   ]);
+  // Delivered (and live) posts per month, split into IP / Non-IP / Festive.
+  const tally = (kind: OutputKind, liveOnly: boolean) => (monthKey: string) =>
+    delivered.filter((e) => e.monthKey === monthKey && outputKindOf(e) === kind && (!liveOnly || e.status === EntryStatus.LIVE)).length;
+  const ipAchieved = tally("ip", false);
+  const ipLiveIn = tally("ip", true);
+  const festiveAchieved = tally("festive", false);
+  const festiveLive = tally("festive", true);
+  const nonIpAchieved = tally("nonIp", false);
+  const nonIpLive = tally("nonIp", true);
 
   const rows: YearRow[] = [];
   let carry = 0;
@@ -96,9 +80,8 @@ export async function getYearSummary(startYear: number) {
       (b) => b.addedMonthKey && b.addedMonthKey <= monthKey && (!b.archivedMonthKey || b.archivedMonthKey > monthKey),
     ).length;
     const base = setting?.baseOverride ?? settings.baseMonthly + settings.perBrand * newBrands;
-    const count = (rows: { monthKey: string; _count: { _all: number } }[]) => rows.find((x) => x.monthKey === monthKey)?._count._all ?? 0;
-    // Total output on the floor: IP pieces + Non-IP + Festive.
-    const achieved = setting?.achievedOverride ?? count(pieceTotals) + count(festiveTotals) + count(nonIpTotals);
+    // Total output on the floor: IP + Non-IP + Festive.
+    const achieved = setting?.achievedOverride ?? ipAchieved(monthKey) + festiveAchieved(monthKey) + nonIpAchieved(monthKey);
     const backlogIn = carryKnown ? carry : null;
     const target = base + (backlogIn ?? 0);
 
@@ -113,15 +96,9 @@ export async function getYearSummary(startYear: number) {
       achieved,
       achievedIsOverride: setting?.achievedOverride != null,
       gap: timing === "future" ? null : target - achieved,
-      festive: {
-        achieved: festiveTotals.find((x) => x.monthKey === monthKey)?._count._all ?? 0,
-        live: festiveLive.find((x) => x.monthKey === monthKey)?._count._all ?? 0,
-      },
-      nonIp: {
-        achieved: nonIpTotals.find((x) => x.monthKey === monthKey)?._count._all ?? 0,
-        live: nonIpLive.find((x) => x.monthKey === monthKey)?._count._all ?? 0,
-      },
-      ipLive: pieceLive.find((x) => x.monthKey === monthKey)?._count._all ?? 0,
+      festive: { achieved: festiveAchieved(monthKey), live: festiveLive(monthKey) },
+      nonIp: { achieved: nonIpAchieved(monthKey), live: nonIpLive(monthKey) },
+      ipLive: ipLiveIn(monthKey),
     });
 
     // Only a finished month's shortfall is known and carried forward.

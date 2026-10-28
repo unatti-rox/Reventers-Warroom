@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { addCalendarEntry } from "@/lib/actions";
 import { inputStyle, primaryButtonStyle } from "@/components/ui";
-import type { EntryKind, PlanFormat } from "@/generated/prisma/enums";
+import type { EntryKind, IpCategory, PlanFormat } from "@/generated/prisma/enums";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 export const FORMATS: PlanFormat[] = ["STORY", "REEL", "AV", "GIF"];
@@ -11,6 +11,31 @@ export const FORMAT_LABEL: Record<PlanFormat, string> = { STORY: "Story", REEL: 
 
 const FESTIVAL = "festival";
 const ipValue = (id: string) => `ip:${id}`;
+
+export type BucketOption = { id: string; name: string; category: IpCategory };
+
+/** The bucket dropdown's options, grouped the way the dashboard counts them: IP, Non-IP, Festive. */
+export function BucketOptions({ ips }: { ips: BucketOption[] }) {
+  const group = (category: IpCategory) =>
+    ips
+      .filter((ip) => ip.category === category)
+      .map((ip) => (
+        <option key={ip.id} value={ipValue(ip.id)}>
+          {ip.name}
+        </option>
+      ));
+  const ip = group("IP");
+  const nonIp = group("NON_IP");
+  return (
+    <>
+      {ip.length > 0 && <optgroup label="IP">{ip}</optgroup>}
+      {nonIp.length > 0 && <optgroup label="Non-IP">{nonIp}</optgroup>}
+      <optgroup label="Festive">
+        <option value={FESTIVAL}>Festival</option>
+      </optgroup>
+    </>
+  );
+}
 
 /** Plans one post: pick which bucket it's for, describe it, and say when it goes live. Logging the first one is how a brand's plan for the month gets built. */
 export function AddCalendarEntryForm({
@@ -20,11 +45,12 @@ export function AddCalendarEntryForm({
   defaultMonth,
 }: {
   brandId: string;
-  ips: { id: string; name: string }[];
+  ips: BucketOption[];
   festivals: { id: string; name: string; dateLabel: string; month: number }[];
   defaultMonth: number;
 }) {
-  const [bucket, setBucket] = useState(ips[0] ? ipValue(ips[0].id) : FESTIVAL);
+  const firstBucket = ips.find((ip) => ip.category === "IP") ?? ips.find((ip) => ip.category === "NON_IP");
+  const [bucket, setBucket] = useState(firstBucket ? ipValue(firstBucket.id) : FESTIVAL);
   const [festivalId, setFestivalId] = useState("");
   const [title, setTitle] = useState("");
   const [format, setFormat] = useState<PlanFormat>("STORY");
@@ -71,13 +97,7 @@ export function AddCalendarEntryForm({
       }}
     >
       <select value={bucket} onChange={(e) => setBucket(e.target.value)} className="h-8 rounded-lg border px-2 text-[11px] min-w-[180px]" style={inputStyle} aria-label="Bucket">
-        {ips.length === 0 && <option value="">No IPs fixed to this cohort</option>}
-        {ips.map((ip) => (
-          <option key={ip.id} value={ipValue(ip.id)}>
-            {ip.name}
-          </option>
-        ))}
-        <option value={FESTIVAL}>Festival</option>
+        <BucketOptions ips={ips} />
       </select>
       {kind === "FESTIVAL" && (
         <select value={festivalId} onChange={(e) => setFestivalId(e.target.value)} className="h-8 rounded-lg border px-2 text-[11px] min-w-[200px]" style={inputStyle} aria-label="Which festival">

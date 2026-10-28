@@ -214,7 +214,7 @@ export async function parseCalendarScreenshot(brandId: string, imageBase64: stri
         imageBase64,
         mediaType,
         monthKey,
-        ipOptions: cohort?.ips.map((ip) => ({ id: ip.id, name: ip.name })) ?? [],
+        ipOptions: cohort?.ips.filter((ip) => ip.category !== "FESTIVE").map((ip) => ({ id: ip.id, name: ip.name })) ?? [],
         festivalOptions: festivals.map((f) => ({ id: f.id, name: f.name })),
       });
     } catch (e) {
