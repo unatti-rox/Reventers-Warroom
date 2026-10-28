@@ -56,8 +56,8 @@ export const floaterSeed = ["Adnan", "Pranit", "Shreyas", "Owaish"];
 export const adminSeed = ["Ishika", "Unnati"];
 
 /** IP monthly base target (sum of weekly targets x 4) and the rise per brand added after launch. */
-export const BASE_MONTHLY_TARGET = 192;
-export const PER_BRAND_INCREMENT = 4;
+export const BASE_MONTHLY_TARGET = 0;
+export const PER_BRAND_INCREMENT = 0;
 
 /** [month, date label, festival] from the team's festival sheet. */
 export const festivalSeed: [number, string, string][] = [
