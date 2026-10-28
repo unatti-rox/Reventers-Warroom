@@ -23,6 +23,7 @@ export type YearRow = {
   /** Shortfall carried in from the previous month; null while that month is still open. */
   backlogIn: number | null;
   target: number;
+  /** Total output: IP + Non-IP + Festive (or the admin-entered total). */
   achieved: number;
   achievedIsOverride: boolean;
   /** Target minus achieved (past and current months). */
@@ -35,9 +36,10 @@ export type YearRow = {
 /**
  * The June–May year, month by month.
  *
- * IP base = monthly base (192) + 4 for every brand added after launch that is
+ * Base = monthly base (192) + 4 for every brand added after launch that is
  * active that month, unless an admin set a base for that month.
- * IP target = base + the previous month's shortfall. A shortfall carries
+ * The target covers total output on the floor: IP + Non-IP + Festive.
+ * Target = base + the previous month's shortfall. A shortfall carries
  * forward (target − achieved, if positive); a surplus never lowers later
  * targets. The carry starts fresh each June.
  */
@@ -93,7 +95,9 @@ export async function getYearSummary(startYear: number) {
       (b) => b.addedMonthKey && b.addedMonthKey <= monthKey && (!b.archivedMonthKey || b.archivedMonthKey > monthKey),
     ).length;
     const base = setting?.baseOverride ?? settings.baseMonthly + settings.perBrand * newBrands;
-    const achieved = setting?.achievedOverride ?? pieceTotals.find((x) => x.monthKey === monthKey)?._count._all ?? 0;
+    const count = (rows: { monthKey: string; _count: { _all: number } }[]) => rows.find((x) => x.monthKey === monthKey)?._count._all ?? 0;
+    // Total output on the floor: IP pieces + Non-IP + Festive.
+    const achieved = setting?.achievedOverride ?? count(pieceTotals) + count(festiveTotals) + count(nonIpTotals);
     const backlogIn = carryKnown ? carry : null;
     const target = base + (backlogIn ?? 0);
 

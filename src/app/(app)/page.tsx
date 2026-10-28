@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { PageHeader, Card, CardHead, ProgressBar, KpiTile, Th, Td } from "@/components/ui";
-import { getCohortOverview, getIpOverview, getFestiveNonIpTotals, getMatrix, getOverdueEntries } from "@/lib/queries";
+import { getCohortOverview, getIpOverview, getOutputByKind, getMatrix } from "@/lib/queries";
 import { getYearSummary } from "@/lib/targets";
 import { currentMonthKey, monthKeyLabel, yearStartFor } from "@/lib/dates";
 import { requireUser } from "@/lib/auth";
@@ -20,13 +20,12 @@ export default async function DashboardPage() {
   await requireUser();
 
   const monthKey = currentMonthKey();
-  const [cohorts, ips, year, planned, matrix, overdue] = await Promise.all([
+  const [cohorts, ips, year, byKind, matrix] = await Promise.all([
     getCohortOverview(monthKey),
     getIpOverview(monthKey),
     getYearSummary(yearStartFor(monthKey)),
-    getFestiveNonIpTotals(monthKey),
+    getOutputByKind(monthKey),
     getMatrix(monthKey),
-    getOverdueEntries(),
   ]);
   const current = year.current;
   const pct = current && current.target ? Math.min(100, Math.round((current.achieved / current.target) * 100)) : 0;
@@ -37,7 +36,7 @@ export default async function DashboardPage() {
 
       <Card className="p-6 mb-5">
         <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-          {monthKeyLabel(monthKey, "long")} · IP output vs. target
+          {monthKeyLabel(monthKey, "long")} · Total output vs. target
         </div>
         <div className="flex items-end gap-3 mt-2">
           <div className="text-[48px] font-extrabold tabular-nums leading-none" style={{ color: statusColor(pct) }}>
@@ -51,7 +50,8 @@ export default async function DashboardPage() {
           <ProgressBar pct={pct} color={statusColor(pct)} />
         </div>
         <div className="text-[10.5px] mt-2" style={{ color: "var(--text-muted)" }}>
-          Target = monthly base + any shortfall carried from earlier months. Full year-by-year breakdown is on{" "}
+          Total output on the floor: IP + Non-IP + Festive. Target = monthly base + any shortfall carried from earlier months. Full
+          year-by-year breakdown is on{" "}
           <Link href="/admin?tab=targets" className="underline">
             Admin → Targets
           </Link>
@@ -59,39 +59,15 @@ export default async function DashboardPage() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-        <KpiTile label="Festive" value={planned.festive.achieved} meta={`${planned.festive.live} live this month`} />
-        <KpiTile label="Non-IP" value={planned.nonIp.achieved} meta={`${planned.nonIp.live} live this month`} />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        {[
+          { label: "IP", t: byKind.ip },
+          { label: "Non-IP", t: byKind.nonIp },
+          { label: "Festive", t: byKind.festive },
+        ].map(({ label, t }) => (
+          <KpiTile key={label} label={label} value={`${t.achieved} / ${t.target}`} meta={`${t.pct}% done · ${t.live} live this month`} />
+        ))}
       </div>
-
-      <Card className="mb-5">
-        <CardHead title="Overdue" subtitle="Planned posts whose date has passed and still aren't live" />
-        <div>
-          {overdue.map((item) => (
-            <div key={item.id} className="flex items-center justify-between gap-3 px-5 py-3 border-b last:border-0" style={{ borderColor: "var(--border)" }}>
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: "var(--status-critical)" }} />
-                <div className="min-w-0">
-                  <div className="text-[12px] font-bold truncate">
-                    {item.title} <span className="font-normal">· {item.brandName}</span>
-                  </div>
-                  <div className="text-[9.5px]" style={{ color: "var(--text-muted)" }}>
-                    {item.cohortCode} · {item.bucket}
-                  </div>
-                </div>
-              </div>
-              <div className="text-[11px] font-bold tabular-nums shrink-0" style={{ color: "var(--status-critical)" }}>
-                was due {item.postDate}
-              </div>
-            </div>
-          ))}
-          {overdue.length === 0 && (
-            <div className="text-[11px] py-6 text-center" style={{ color: "var(--text-muted)" }}>
-              Nothing overdue right now.
-            </div>
-          )}
-        </div>
-      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
         <Card>

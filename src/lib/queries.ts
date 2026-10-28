@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { PersonRole, EntryKind, EntryStatus, type PlanFormat } from "@/generated/prisma/enums";
-import { currentMonthKey, todayDateStr, addDays } from "@/lib/dates";
+import { currentMonthKey, addDays } from "@/lib/dates";
 
 /** Brands that count in a given month (not archived before it). */
 function activeIn(monthKey: string) {
@@ -75,13 +75,14 @@ export async function getIpOverview(monthKey: string) {
 }
 
 /** Festive & Non-IP totals for the month (the same calendar, just the other two kinds). */
-export async function getFestiveNonIpTotals(monthKey: string) {
+/** This month's planned / achieved / live, split into IP, Non-IP and Festive. */
+export async function getOutputByKind(monthKey: string) {
   const rows = await prisma.calendarEntry.findMany({
-    where: { monthKey, kind: { in: [EntryKind.FESTIVAL, EntryKind.NON_IP] } },
+    where: { monthKey },
     select: { kind: true, status: true },
   });
   const sumBy = (kind: EntryKind) => summarize(rows.filter((r) => r.kind === kind));
-  return { festive: sumBy(EntryKind.FESTIVAL), nonIp: sumBy(EntryKind.NON_IP) };
+  return { ip: sumBy(EntryKind.REGULAR), nonIp: sumBy(EntryKind.NON_IP), festive: sumBy(EntryKind.FESTIVAL) };
 }
 
 /** Every IP with who handles it, and which cohorts it's fixed to. */
@@ -127,25 +128,6 @@ export async function getMatrix(monthKey: string) {
     cellMap.set(key, cell);
   }
   return { cohorts, ips, cellMap };
-}
-
-/** Entries whose post date has passed but aren't live yet - the sharpest "needs attention" signal there is. */
-export async function getOverdueEntries(limit = 8) {
-  const rows = await prisma.calendarEntry.findMany({
-    where: { postDate: { lt: todayDateStr() }, status: { not: EntryStatus.LIVE } },
-    include: { brand: { include: { cohort: true } }, ip: true, festival: true },
-    orderBy: { postDate: "asc" },
-    take: limit,
-  });
-  return rows.map((e) => ({
-    id: e.id,
-    brandName: e.brand.name,
-    cohortCode: e.brand.cohort.code,
-    bucket: e.kind === EntryKind.REGULAR ? (e.ip?.name ?? "") : e.kind === EntryKind.FESTIVAL ? (e.festival?.name ?? "Festival") : "Non-IP",
-    title: e.title,
-    postDate: e.postDate,
-    status: e.status,
-  }));
 }
 
 /* ---------------- CALENDAR (the one input surface) ---------------- */
