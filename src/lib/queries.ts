@@ -89,7 +89,8 @@ export async function getCohortPerformance(monthKey: string) {
 /** Each IP's delivery for the month, from the calendar. */
 export async function getIpOverview(monthKey: string) {
   const [ips, entries] = await Promise.all([
-    prisma.ip.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    // Current content buckets only: old launch-era IP names sit at sortOrder >= 1000 (see applyContentBucketRelist in seed.ts).
+    prisma.ip.findMany({ where: { sortOrder: { lt: 1000 } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
     prisma.calendarEntry.findMany({ where: { monthKey, kind: EntryKind.REGULAR }, select: { ipId: true, status: true } }),
   ]);
   return ips.map((ip) => {
