@@ -181,19 +181,6 @@ export async function setEntryStatus(entryId: string, status: EntryStatus) {
   });
 }
 
-/** Saves the free-text remark on a post (empty clears it). */
-export async function setEntryRemarks(entryId: string, remarks: string) {
-  return run(async () => {
-    const user = await actionUser();
-    const text = String(remarks ?? "").trim();
-    if (text.length > 500) refuse("Keep remarks under 500 characters.");
-    const entry = await prisma.calendarEntry.findUnique({ where: { id: entryId } });
-    if (!entry) refuse("That entry is already gone.");
-    await assertCanTouchEntry(user, entry.brandId, entry.ipId);
-    await prisma.calendarEntry.update({ where: { id: entryId }, data: { remarks: text || null } });
-  });
-}
-
 /** How many days before a post's date production is due — set once in Admin. */
 export async function setCalendarBuffer(days: number) {
   return run(async () => {

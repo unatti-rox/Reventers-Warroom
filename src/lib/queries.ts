@@ -146,7 +146,6 @@ export type CalendarEntryRow = {
   format: PlanFormat | null;
   postDate: string;
   status: EntryStatus;
-  remarks: string;
 };
 
 /**
@@ -185,7 +184,6 @@ export async function getCalendarCohortView(cohortIds: string[] | "all", monthKe
       format: e.format,
       postDate: e.postDate,
       status: e.status,
-      remarks: e.remarks ?? "",
     };
     const list = rowsByBrand.get(e.brandId) ?? [];
     list.push(row);
@@ -215,7 +213,6 @@ export type TaskListEntry = {
   postDate: string;
   dueDate: string;
   status: EntryStatus;
-  remarks: string;
 };
 
 /**
@@ -242,7 +239,6 @@ export async function getIpTaskList(ipIds: string[]) {
       postDate: e.postDate,
       dueDate: addDays(e.postDate, -bufferDays),
       status: e.status,
-      remarks: e.remarks ?? "",
     };
     const list = byIp.get(e.ipId!) ?? [];
     list.push(row);

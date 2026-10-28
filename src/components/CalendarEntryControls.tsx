@@ -1,8 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
-import { setEntryStatus, setEntryRemarks, removeCalendarEntry } from "@/lib/actions";
-import { EditableText } from "@/components/EditableText";
+import { setEntryStatus, removeCalendarEntry } from "@/lib/actions";
 import { STATUS_OPTIONS, STATUS_LABEL, STATUS_MEANING, STATUS_COLOR } from "@/lib/entryStatus";
 import type { EntryStatus } from "@/generated/prisma/enums";
 
@@ -38,15 +37,6 @@ export function EntryStatusSelect({ entryId, status }: { entryId: string; status
         </option>
       ))}
     </select>
-  );
-}
-
-/** Click to add or edit a remark on a post. */
-export function EntryRemarks({ entryId, remarks }: { entryId: string; remarks: string }) {
-  return (
-    <span className="text-[10.5px]" style={{ color: remarks ? "var(--text-primary)" : "var(--text-muted)" }}>
-      <EditableText value={remarks} allowEmpty placeholder="Add remark" label="remarks" onCommit={(v) => setEntryRemarks(entryId, v)} />
-    </span>
   );
 }
 

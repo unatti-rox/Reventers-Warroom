@@ -1,5 +1,5 @@
 import { CollapsibleCard } from "@/components/CollapsibleCard";
-import { EntryStatusSelect, EntryRemarks, RemoveEntryButton } from "@/components/CalendarEntryControls";
+import { EntryStatusSelect, RemoveEntryButton } from "@/components/CalendarEntryControls";
 import { isDelivered, isPlanned } from "@/lib/entryStatus";
 import { AddCalendarEntryForm, FORMAT_LABEL } from "@/components/AddCalendarEntryForm";
 import { UploadCalendarForm } from "@/components/UploadCalendarForm";
@@ -34,7 +34,6 @@ export function CalendarBrandCard({
         <span className="flex-1">Post</span>
         <span className="w-20">Date</span>
         <span className="w-[172px] shrink-0">Status</span>
-        <span className="w-[220px] shrink-0">Remarks</span>
         <span className="w-4" />
       </div>
       {entries.map((e) => (
@@ -49,9 +48,6 @@ export function CalendarBrandCard({
           <div className="w-20 shrink-0 text-[11px] tabular-nums">{e.postDate}</div>
           <div className="w-[172px] shrink-0">
             <EntryStatusSelect entryId={e.id} status={e.status} />
-          </div>
-          <div className="w-[220px] shrink-0 break-words">
-            <EntryRemarks entryId={e.id} remarks={e.remarks} />
           </div>
           <div className="w-4">
             <RemoveEntryButton entryId={e.id} />

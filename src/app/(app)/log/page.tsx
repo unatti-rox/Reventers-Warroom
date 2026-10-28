@@ -49,7 +49,6 @@ export default async function LogItPage({ searchParams }: { searchParams: Promis
                   key={t.id}
                   entryId={t.id}
                   status={t.status}
-                  remarks={t.remarks}
                   brandName={t.brandName}
                   cohortCode={t.cohortCode}
                   title={t.title}
