@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { PageHeader, Card, CardHead, ProgressBar, KpiTile, Th, Td } from "@/components/ui";
-import { getCohortOverview, getIpOverview, getOutputByKind, getMatrix } from "@/lib/queries";
+import { getCohortPerformance, getIpOverview, getOutputByKind } from "@/lib/queries";
 import { getYearSummary } from "@/lib/targets";
 import { currentMonthKey, monthKeyLabel, yearStartFor } from "@/lib/dates";
 import { requireUser } from "@/lib/auth";
@@ -20,12 +20,11 @@ export default async function DashboardPage() {
   await requireUser();
 
   const monthKey = currentMonthKey();
-  const [cohorts, ips, year, byKind, matrix] = await Promise.all([
-    getCohortOverview(monthKey),
+  const [performance, ips, year, byKind] = await Promise.all([
+    getCohortPerformance(monthKey),
     getIpOverview(monthKey),
     getYearSummary(yearStartFor(monthKey)),
     getOutputByKind(monthKey),
-    getMatrix(monthKey),
   ]);
   const current = year.current;
   const pct = current && current.target ? Math.min(100, Math.round((current.achieved / current.target) * 100)) : 0;
@@ -69,31 +68,71 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
-        <Card>
-          <CardHead title="By account director" subtitle="Each cohort, by the account director responsible for it" />
-          <div>
-            {cohorts.map((c) => (
-              <div key={c.id} className="flex items-center gap-3 px-5 py-3 border-b last:border-0" style={{ borderColor: "var(--border)" }}>
-                <span className="text-[11px] font-bold w-32 shrink-0 truncate" title={c.code}>
-                  {c.leaderName}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <ProgressBar pct={c.pct} color={statusColor(c.pct)} />
-                </div>
-                <span className="text-[11px] font-bold tabular-nums w-10 text-right shrink-0">{c.pct}%</span>
-              </div>
-            ))}
-          </div>
-        </Card>
+      <Card className="mb-5">
+        <CardHead
+          title="Cohort performance"
+          subtitle={`${monthKeyLabel(monthKey, "long")} · delivered / planned, by account director`}
+        />
+        <div className="overflow-auto">
+          <table className="w-full border-collapse" style={{ minWidth: 820 }}>
+            <thead>
+              <tr>
+                <Th>Account director</Th>
+                <Th align="right">Brands</Th>
+                <Th align="right">IP</Th>
+                <Th align="right">Non-IP</Th>
+                <Th align="right">Festive</Th>
+                <Th align="right">Delivered / Target</Th>
+                <Th align="right">%</Th>
+                <Th>Progress</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {performance.rows.map((r) => {
+                return (
+                  <tr key={r.id}>
+                    <Td className="font-bold">
+                      <span title={r.code}>{r.leaderName}</span>
+                    </Td>
+                    <Td align="right" className="tabular-nums">{r.brandCount}</Td>
+                    <Td align="right" className="tabular-nums">{r.ip.achieved}/{r.ip.target}</Td>
+                    <Td align="right" className="tabular-nums">{r.nonIp.achieved}/{r.nonIp.target}</Td>
+                    <Td align="right" className="tabular-nums">{r.festive.achieved}/{r.festive.target}</Td>
+                    <Td align="right" className="tabular-nums font-bold">{r.total.achieved}/{r.total.target}</Td>
+                    <Td align="right" className="tabular-nums font-bold" style={{ color: r.total.target ? statusColor(r.total.pct) : "var(--text-muted)" }}>
+                      {r.total.target ? `${r.total.pct}%` : "—"}
+                    </Td>
+                    <Td className="min-w-[140px]">
+                      <ProgressBar pct={r.total.pct} color={statusColor(r.total.pct)} />
+                    </Td>
+                  </tr>
+                );
+              })}
+              <tr style={{ background: "var(--surface-tint)" }}>
+                <Td className="font-extrabold">All cohorts</Td>
+                <Td align="right" className="tabular-nums font-extrabold">{performance.all.brandCount}</Td>
+                <Td align="right" className="tabular-nums font-extrabold">{performance.all.ip.achieved}/{performance.all.ip.target}</Td>
+                <Td align="right" className="tabular-nums font-extrabold">{performance.all.nonIp.achieved}/{performance.all.nonIp.target}</Td>
+                <Td align="right" className="tabular-nums font-extrabold">{performance.all.festive.achieved}/{performance.all.festive.target}</Td>
+                <Td align="right" className="tabular-nums font-extrabold">{performance.all.total.achieved}/{performance.all.total.target}</Td>
+                <Td align="right" className="tabular-nums font-extrabold" style={{ color: performance.all.total.target ? statusColor(performance.all.total.pct) : "var(--text-muted)" }}>
+                  {performance.all.total.target ? `${performance.all.total.pct}%` : "—"}
+                </Td>
+                <Td />
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
+      <div className="mb-5">
         <Card>
           <CardHead title="By IP" subtitle="Content format completion across all brands" />
           <div>
             {ips.map((ip) => (
               <div key={ip.id} className="flex items-center gap-3 px-5 py-3 border-b last:border-0" style={{ borderColor: "var(--border)" }}>
                 <span className="text-[11px] font-bold flex-1 min-w-0 truncate pr-2">{ip.name}</span>
-                <div className="w-[90px] shrink-0">
+                <div className="w-[45%] shrink-0">
                   <ProgressBar pct={ip.pct} color={statusColor(ip.pct)} />
                 </div>
                 <span className="text-[11px] font-bold tabular-nums w-10 text-right shrink-0">{ip.pct}%</span>
@@ -103,53 +142,6 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      <Card>
-        <CardHead title="Every brand × IP" subtitle="The floor-level detail behind the percentages above" />
-        <div className="overflow-auto">
-          <table className="w-full border-collapse" style={{ minWidth: 760 }}>
-            <thead>
-              <tr>
-                <Th>Brand</Th>
-                <Th>IP</Th>
-                <Th align="right">Target</Th>
-                <Th align="right">Achieved</Th>
-                <Th align="right">Live</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {matrix.cohorts.flatMap((cohort) =>
-                cohort.brands.flatMap((brand) =>
-                  matrix.ips
-                    .filter((ip) => matrix.cellMap.has(`${brand.id}:${ip.id}`))
-                    .map((ip) => {
-                      const cell = matrix.cellMap.get(`${brand.id}:${ip.id}`)!;
-                      return (
-                        <tr key={`${brand.id}:${ip.id}`}>
-                          <Td className="font-bold">
-                            {brand.name}
-                            <div className="text-[9.5px] font-normal" style={{ color: "var(--text-muted)" }}>
-                              {cohort.code} · {cohort.leaderName}
-                            </div>
-                          </Td>
-                          <Td>{ip.name}</Td>
-                          <Td align="right" className="tabular-nums">
-                            {cell.target}
-                          </Td>
-                          <Td align="right" className="tabular-nums font-bold">
-                            {cell.achieved}
-                          </Td>
-                          <Td align="right" className="tabular-nums">
-                            {cell.live}
-                          </Td>
-                        </tr>
-                      );
-                    }),
-                ),
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
     </div>
   );
 }
