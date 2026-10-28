@@ -71,11 +71,13 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
         <Card>
-          <CardHead title="By cohort" subtitle="Cohort Leader = person responsible for the cohort" />
+          <CardHead title="By account director" subtitle="Each cohort, by the account director responsible for it" />
           <div>
             {cohorts.map((c) => (
               <div key={c.id} className="flex items-center gap-3 px-5 py-3 border-b last:border-0" style={{ borderColor: "var(--border)" }}>
-                <span className="text-[11px] font-bold w-7 shrink-0">{c.code}</span>
+                <span className="text-[11px] font-bold w-32 shrink-0 truncate" title={c.code}>
+                  {c.leaderName}
+                </span>
                 <div className="flex-1 min-w-0">
                   <ProgressBar pct={c.pct} color={statusColor(c.pct)} />
                 </div>
