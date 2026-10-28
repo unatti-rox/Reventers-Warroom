@@ -6,6 +6,7 @@ import { getCalendarCohortView, getIpTaskList, getFestivals } from "@/lib/querie
 import { currentMonthKey, monthKeyLabel, yearMonths, yearStartFor, daysFromToday } from "@/lib/dates";
 import { requireUser } from "@/lib/auth";
 import { paceOf, PACE_COLOR, PACE_LABEL, SLIPPING_DAYS } from "@/lib/pace";
+import { isPlanned } from "@/lib/entryStatus";
 
 function urgency(dueDate: string): { label: string; color: string } {
   const days = daysFromToday(dueDate);
@@ -68,6 +69,7 @@ export default async function LogItPage({ searchParams }: { searchParams: Promis
       {calendarView &&
         calendarView.map((cohort) => {
           const pace = paceOf(cohort.brands.flatMap((b) => b.entries));
+          const notPlanned = cohort.brands.filter((b) => !b.entries.some((e) => isPlanned(e.status))).length;
           return (
             <div key={cohort.id} className="mb-6">
               <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
@@ -81,6 +83,15 @@ export default async function LogItPage({ searchParams }: { searchParams: Promis
                     <span className="w-1.5 h-1.5 rounded-full" style={{ background: PACE_COLOR[pace.pace] }} />
                     {PACE_LABEL[pace.pace]}
                     {pace.late > 0 ? ` · ${pace.late} late` : ""}
+                  </span>
+                )}
+                {notPlanned > 0 && (
+                  <span
+                    className="inline-flex items-center rounded-full border px-2 py-0.5 text-[9.5px] normal-case tracking-normal"
+                    style={{ borderColor: "var(--border)" }}
+                    title={`No posts planned for ${monthKeyLabel(monthKey)} yet`}
+                  >
+                    {notPlanned} of {cohort.brands.length} brand{cohort.brands.length === 1 ? "" : "s"} not planned
                   </span>
                 )}
               </h2>

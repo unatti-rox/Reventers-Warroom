@@ -30,7 +30,7 @@ export function CalendarBrandCard({
   const pace = paceOf(entries);
 
   return (
-    <CollapsibleCard title={brandName} subtitle={subtitle} meta={`${done} / ${planned.length}`}
+    <CollapsibleCard title={brandName} subtitle={subtitle} meta={planned.length ? `${done} / ${planned.length}` : "Not planned"}
       metaColor={pace.pace === "none" ? undefined : PACE_COLOR[pace.pace]}
       metaTitle={pace.note}
       defaultOpen={defaultOpen}
