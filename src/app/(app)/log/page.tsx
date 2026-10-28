@@ -5,7 +5,7 @@ import { TaskListRow } from "@/components/TaskListRow";
 import { getCalendarCohortView, getIpTaskList, getFestivals } from "@/lib/queries";
 import { currentMonthKey, monthKeyLabel, yearMonths, yearStartFor, daysFromToday } from "@/lib/dates";
 import { requireUser } from "@/lib/auth";
-import { paceOf, PACE_COLOR, PACE_LABEL, SLIPPING_DAYS } from "@/lib/pace";
+import { paceOf, inPlanningWindow, PACE_COLOR, PACE_LABEL, PLANNING_WINDOW, SLIPPING_DAYS } from "@/lib/pace";
 import { isPlanned } from "@/lib/entryStatus";
 
 function urgency(dueDate: string): { label: string; color: string } {
@@ -22,6 +22,8 @@ export default async function LogItPage({ searchParams }: { searchParams: Promis
   const monthKey = params.month && /^\d{4}-\d{2}$/.test(params.month) ? params.month : now;
 
   const showCalendar = user.isAdmin || user.cohortIds.length > 0;
+  // "Not planned" flags only show for next month, between the 22nd and 25th.
+  const flagNotPlanned = inPlanningWindow(monthKey);
   const showTasks = user.ipcsIpIds.length > 0;
 
   const [calendarView, taskView, festivals] = await Promise.all([
@@ -85,11 +87,11 @@ export default async function LogItPage({ searchParams }: { searchParams: Promis
                     {pace.late > 0 ? ` · ${pace.late} late` : ""}
                   </span>
                 )}
-                {notPlanned > 0 && (
+                {flagNotPlanned && notPlanned > 0 && (
                   <span
                     className="inline-flex items-center rounded-full border px-2 py-0.5 text-[9.5px] normal-case tracking-normal"
                     style={{ borderColor: "var(--border)" }}
-                    title={`No posts planned for ${monthKeyLabel(monthKey)} yet`}
+                    title={`No posts planned for ${monthKeyLabel(monthKey)} yet - planning closes on the ${PLANNING_WINDOW.to}th`}
                   >
                     {notPlanned} of {cohort.brands.length} brand{cohort.brands.length === 1 ? "" : "s"} not planned
                   </span>
@@ -104,6 +106,7 @@ export default async function LogItPage({ searchParams }: { searchParams: Promis
                   entries={brand.entries}
                   festivals={festivals}
                   monthKey={monthKey}
+                  flagNotPlanned={flagNotPlanned}
                 />
               ))}
               {cohort.brands.length === 0 && (

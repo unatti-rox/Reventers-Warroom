@@ -14,6 +14,7 @@ export function CalendarBrandCard({
   entries,
   festivals,
   monthKey,
+  flagNotPlanned = false,
   defaultOpen = false,
 }: {
   brandId: string;
@@ -23,6 +24,8 @@ export function CalendarBrandCard({
   entries: CalendarEntryRow[];
   festivals: { id: string; name: string; dateLabel: string; month: number }[];
   monthKey: string;
+  /** During the planning window, an empty brand reads "Not planned" instead of "0 / 0". */
+  flagNotPlanned?: boolean;
   defaultOpen?: boolean;
 }) {
   const planned = entries.filter((e) => isPlanned(e.status));
@@ -30,7 +33,7 @@ export function CalendarBrandCard({
   const pace = paceOf(entries);
 
   return (
-    <CollapsibleCard title={brandName} subtitle={subtitle} meta={planned.length ? `${done} / ${planned.length}` : "Not planned"}
+    <CollapsibleCard title={brandName} subtitle={subtitle} meta={planned.length || !flagNotPlanned ? `${done} / ${planned.length}` : "Not planned"}
       metaColor={pace.pace === "none" ? undefined : PACE_COLOR[pace.pace]}
       metaTitle={pace.note}
       defaultOpen={defaultOpen}
