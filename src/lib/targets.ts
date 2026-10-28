@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { EntryKind, EntryStatus } from "@/generated/prisma/enums";
+import { DELIVERED } from "@/lib/entryStatus";
 import { currentMonthKey, yearMonths } from "@/lib/dates";
 
 export const DEFAULT_BASE = 192;
@@ -55,7 +56,7 @@ export async function getYearSummary(startYear: number) {
     prisma.monthSetting.findMany({ where: { monthKey: { gte: first, lte: last } } }),
     prisma.calendarEntry.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.REGULAR, status: { not: EntryStatus.PENDING } },
+      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.REGULAR, status: { in: DELIVERED } },
       _count: { _all: true },
     }),
     prisma.calendarEntry.groupBy({
@@ -65,7 +66,7 @@ export async function getYearSummary(startYear: number) {
     }),
     prisma.calendarEntry.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.FESTIVAL, status: { not: EntryStatus.PENDING } },
+      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.FESTIVAL, status: { in: DELIVERED } },
       _count: { _all: true },
     }),
     prisma.calendarEntry.groupBy({
@@ -75,7 +76,7 @@ export async function getYearSummary(startYear: number) {
     }),
     prisma.calendarEntry.groupBy({
       by: ["monthKey"],
-      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.NON_IP, status: { not: EntryStatus.PENDING } },
+      where: { monthKey: { gte: first, lte: last }, kind: EntryKind.NON_IP, status: { in: DELIVERED } },
       _count: { _all: true },
     }),
     prisma.calendarEntry.groupBy({

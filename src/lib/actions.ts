@@ -35,6 +35,7 @@ function refuse(message: string): never {
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function checkMonth(monthKey: string) {
   if (!MONTH.test(monthKey)) refuse("Invalid month.");
@@ -168,40 +169,15 @@ export async function removeCalendarEntry(entryId: string) {
   });
 }
 
-/** Marks an entry produced (PENDING → DONE). */
-export async function markEntryDone(entryId: string) {
+/** Sets a post's status from the Log it dropdown: WIP, ATR, CTR, LIVE or REJECTED. */
+export async function setEntryStatus(entryId: string, status: EntryStatus) {
   return run(async () => {
     const user = await actionUser();
+    if (!Object.values(EntryStatus).includes(status)) refuse("Pick a status.");
     const entry = await prisma.calendarEntry.findUnique({ where: { id: entryId } });
     if (!entry) refuse("That entry is already gone.");
     await assertCanTouchEntry(user, entry.brandId, entry.ipId);
-    if (entry.status !== EntryStatus.PENDING) refuse("Already marked done.");
-    await prisma.calendarEntry.update({ where: { id: entryId }, data: { status: EntryStatus.DONE } });
-  });
-}
-
-/** Marks an entry live (DONE or PENDING → LIVE). */
-export async function markEntryLive(entryId: string) {
-  return run(async () => {
-    const user = await actionUser();
-    const entry = await prisma.calendarEntry.findUnique({ where: { id: entryId } });
-    if (!entry) refuse("That entry is already gone.");
-    await assertCanTouchEntry(user, entry.brandId, entry.ipId);
-    if (entry.status === EntryStatus.LIVE) refuse("Already live.");
-    await prisma.calendarEntry.update({ where: { id: entryId }, data: { status: EntryStatus.LIVE } });
-  });
-}
-
-/** Steps an entry's status back one notch (LIVE → DONE → PENDING) - for fixing an accidental tap. */
-export async function undoEntryStatus(entryId: string) {
-  return run(async () => {
-    const user = await actionUser();
-    const entry = await prisma.calendarEntry.findUnique({ where: { id: entryId } });
-    if (!entry) refuse("That entry is already gone.");
-    await assertCanTouchEntry(user, entry.brandId, entry.ipId);
-    if (entry.status === EntryStatus.PENDING) refuse("Nothing to undo.");
-    const prev = entry.status === EntryStatus.LIVE ? EntryStatus.DONE : EntryStatus.PENDING;
-    await prisma.calendarEntry.update({ where: { id: entryId }, data: { status: prev } });
+    await prisma.calendarEntry.update({ where: { id: entryId }, data: { status } });
   });
 }
 
@@ -255,11 +231,22 @@ export async function parseCalendarScreenshot(brandId: string, imageBase64: stri
 
 /* ---------------- SHOOT SCHEDULE ---------------- */
 
-export async function addShoot(cohortId: string, brandId: string, ipId: string, date: string, dop: string, socialMediaPerson: string, remarks: string) {
+export async function addShoot(
+  cohortId: string,
+  brandId: string,
+  ipId: string,
+  date: string,
+  time: string,
+  dop: string,
+  socialMediaPerson: string,
+  cs: string,
+  remarks: string,
+) {
   return run(async () => {
     const user = await actionUser();
     assertLeadsCohort(user, cohortId);
     if (!DAY.test(date)) refuse("Pick a valid date.");
+    if (time && !HHMM.test(time)) refuse("Pick a valid time.");
     const brand = await prisma.brand.findUnique({ where: { id: brandId } });
     if (!brand || brand.cohortId !== cohortId) refuse("Pick a brand from this cohort.");
     if (!(await prisma.ip.findUnique({ where: { id: ipId } }))) refuse("Pick an IP.");
@@ -271,13 +258,19 @@ export async function addShoot(cohortId: string, brandId: string, ipId: string, 
         date,
         dop: text(dop, "the DOP"),
         socialMediaPerson: text(socialMediaPerson, "the social media person"),
+        time: time || "",
+        cs: String(cs ?? "").trim().slice(0, 80),
         remarks: String(remarks ?? "").trim().slice(0, 300),
       },
     });
   });
 }
 
-export async function updateShoot(shootId: string, field: "brandId" | "ipId" | "date" | "dop" | "socialMediaPerson" | "remarks", value: string) {
+export async function updateShoot(
+  shootId: string,
+  field: "brandId" | "ipId" | "date" | "time" | "dop" | "socialMediaPerson" | "cs" | "remarks",
+  value: string,
+) {
   return run(async () => {
     const user = await actionUser();
     const shoot = await prisma.shoot.findUnique({ where: { id: shootId } });
@@ -294,6 +287,11 @@ export async function updateShoot(shootId: string, field: "brandId" | "ipId" | "
       const brand = await prisma.brand.findUnique({ where: { id: value } });
       if (!brand || brand.cohortId !== shoot.cohortId) refuse("Pick a brand from this cohort.");
       v = value;
+    } else if (field === "time") {
+      v = String(value ?? "").trim();
+      if (v && !HHMM.test(v)) refuse("Pick a valid time.");
+    } else if (field === "cs") {
+      v = String(value ?? "").trim().slice(0, 80);
     } else if (field === "remarks") {
       v = String(value ?? "").trim().slice(0, 300);
     } else {

@@ -17,13 +17,17 @@ export default async function ShootSchedulePage({ searchParams }: { searchParams
     .filter((c) => canEdit(c.id))
     .map((c) => ({ id: c.id, label: `${c.code} · ${c.leaderName}`, brands: c.brands.map((b) => ({ id: b.id, name: b.name })) }));
   const cohortById = new Map(cohorts.map((c) => [c.id, c]));
-  const ipOptions = ips.map((ip) => ({ id: ip.id, name: ip.name }));
+  // Current content buckets only (old launch-era IP names sit at sortOrder >= 1000); a shoot that still
+  // uses an old name keeps it in its own row's dropdown.
+  const ipOptions = ips.filter((ip) => ip.sortOrder < 1000).map((ip) => ({ id: ip.id, name: ip.name }));
+  const ipById = new Map(ips.map((ip) => [ip.id, { id: ip.id, name: ip.name }]));
+  const ipOptionsFor = (ipId: string) => (ipOptions.some((o) => o.id === ipId) || !ipById.has(ipId) ? ipOptions : [ipById.get(ipId)!, ...ipOptions]);
 
   return (
     <div>
       <PageHeader
         title="Shoot Schedule"
-        subtitle="Who's shooting what, when, and with which DOP and social media person"
+        subtitle="Who's shooting what, when, and with which DOP, social media person and CS"
         right={<MonthSwitcher monthKeys={yearMonths(yearStartFor(now))} current={monthKey} />}
       />
       <Card>
@@ -38,8 +42,10 @@ export default async function ShootSchedulePage({ searchParams }: { searchParams
                 <Th>Brand</Th>
                 <Th>IP</Th>
                 <Th>Date</Th>
+                <Th>Time</Th>
                 <Th>DOP</Th>
                 <Th>Social media person</Th>
+                <Th>CS</Th>
                 <Th>Remarks</Th>
                 <Th />
               </tr>
@@ -61,16 +67,22 @@ export default async function ShootSchedulePage({ searchParams }: { searchParams
                       <ShootBrandCell shootId={s.id} brandId={s.brandId} brands={cohort?.brands.map((b) => ({ id: b.id, name: b.name })) ?? []} editable={editable} />
                     </Td>
                     <Td>
-                      <ShootIpCell shootId={s.id} ipId={s.ipId} ips={ipOptions} editable={editable} />
+                      <ShootIpCell shootId={s.id} ipId={s.ipId} ips={ipOptionsFor(s.ipId)} editable={editable} />
                     </Td>
                     <Td className="tabular-nums whitespace-nowrap">
                       <ShootTextCell shootId={s.id} field="date" value={s.date} editable={editable} type="date" label={`${cohort?.code} shoot date`} />
+                    </Td>
+                    <Td className="tabular-nums whitespace-nowrap">
+                      <ShootTextCell shootId={s.id} field="time" value={s.time} editable={editable} type="time" allowEmpty label={`${cohort?.code} shoot time`} />
                     </Td>
                     <Td>
                       <ShootPersonCell shootId={s.id} field="dop" value={s.dop} options={DOP_PEOPLE} editable={editable} label={`${cohort?.code} DOP`} />
                     </Td>
                     <Td>
                       <ShootPersonCell shootId={s.id} field="socialMediaPerson" value={s.socialMediaPerson} options={SOCIAL_MEDIA_PEOPLE} editable={editable} label={`${cohort?.code} social media person`} />
+                    </Td>
+                    <Td>
+                      <ShootTextCell shootId={s.id} field="cs" value={s.cs} editable={editable} allowEmpty label={`${cohort?.code} CS`} />
                     </Td>
                     <Td>
                       <ShootTextCell shootId={s.id} field="remarks" value={s.remarks} editable={editable} allowEmpty label={`${cohort?.code} remarks`} />

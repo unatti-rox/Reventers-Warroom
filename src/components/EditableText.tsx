@@ -20,7 +20,7 @@ export function EditableText({
   onCommit: (value: string) => Promise<ActionResult>;
   readOnly?: boolean;
   allowEmpty?: boolean;
-  type?: "text" | "date";
+  type?: "text" | "date" | "time";
   placeholder?: string;
   label?: string;
 }) {
@@ -74,7 +74,7 @@ export function EditableText({
         if (e.key === "Escape") setEditing(false);
       }}
       className="rounded border px-1.5 py-0.5 text-[11px]"
-      style={{ borderColor: "var(--brand-ink)", background: "var(--surface-raised)", color: "var(--text-primary)", minWidth: type === "date" ? 130 : 120 }}
+      style={{ borderColor: "var(--brand-ink)", background: "var(--surface-raised)", color: "var(--text-primary)", minWidth: type === "date" ? 130 : type === "time" ? 100 : 120 }}
     />
   );
 }
