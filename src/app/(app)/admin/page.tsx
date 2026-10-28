@@ -98,7 +98,7 @@ async function TargetsTab({ year }: { year?: string }) {
                 <Th align="right">Base for this month</Th>
                 <Th align="right">Backlog in</Th>
                 <Th align="right">Target</Th>
-                <Th align="right">Achieved (matrix)</Th>
+                <Th align="right">Achieved (all output)</Th>
                 <Th align="right">Achieved (entered)</Th>
               </tr>
             </thead>
