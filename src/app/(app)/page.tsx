@@ -1,7 +1,5 @@
-import Link from "next/link";
 import { PageHeader, Card, CardHead, ProgressBar, KpiTile, Th, Td } from "@/components/ui";
 import { getCohortPerformance, getIpOverview, getOutputByKind } from "@/lib/queries";
-import { getYearSummary } from "@/lib/targets";
 import { currentMonthKey, monthKeyLabel, yearMonths, yearStartFor } from "@/lib/dates";
 import { MonthSwitcher } from "@/components/Switchers";
 import { requireUser } from "@/lib/auth";
@@ -23,14 +21,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const params = await searchParams;
   const now = currentMonthKey();
   const monthKey = params.month && /^\d{4}-\d{2}$/.test(params.month) ? params.month : now;
-  const [performance, ips, year, byKind] = await Promise.all([
+  const [performance, ips, byKind] = await Promise.all([
     getCohortPerformance(monthKey),
     getIpOverview(monthKey),
-    getYearSummary(yearStartFor(monthKey)),
     getOutputByKind(monthKey),
   ]);
-  const current = year.rows.find((r) => r.monthKey === monthKey) ?? null;
-  const pct = current && current.target ? Math.min(100, Math.round((current.achieved / current.target) * 100)) : 0;
+  // The floor's target is its scope: every post planned on Log it this month (rejected ones excluded).
+  const floor = performance.all.total;
+  const pct = floor.pct;
 
   return (
     <div>
@@ -42,26 +40,21 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
       <Card className="p-6 mb-5">
         <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-          {monthKeyLabel(monthKey, "long")} · Total output vs. target
+          {monthKeyLabel(monthKey, "long")} · Total output vs. scope
         </div>
         <div className="flex items-end gap-3 mt-2">
           <div className="text-[48px] font-extrabold tabular-nums leading-none" style={{ color: statusColor(pct) }}>
             {pct}%
           </div>
           <div className="text-[13px] pb-2" style={{ color: "var(--text-muted)" }}>
-            {current ? `${current.achieved} of ${current.target} (incl. ${current.backlogIn ?? 0} backlog)` : "—"}
+            {floor.achieved} live of {floor.target} planned
           </div>
         </div>
         <div className="mt-4">
           <ProgressBar pct={pct} color={statusColor(pct)} />
         </div>
         <div className="text-[10.5px] mt-2" style={{ color: "var(--text-muted)" }}>
-          Total output on the floor: IP + Non-IP + Festive. Target = monthly base + any shortfall carried from earlier months. Full
-          year-by-year breakdown is on{" "}
-          <Link href="/admin?tab=targets" className="underline">
-            Admin → Targets
-          </Link>
-          .
+          Total output on the floor: IP + Non-IP + Festive. Scope = every post planned on Log it for the month; rejected posts drop out.
         </div>
       </Card>
 

@@ -4,8 +4,8 @@ import { DELIVERED } from "@/lib/entryStatus";
 import { outputKindOf, type OutputKind } from "@/lib/outputKind";
 import { currentMonthKey, yearMonths } from "@/lib/dates";
 
-export const DEFAULT_BASE = 192;
-export const DEFAULT_PER_BRAND = 4;
+export const DEFAULT_BASE = 0;
+export const DEFAULT_PER_BRAND = 0;
 /** First month whose shortfall carries forward. Earlier months weren't logged here, so they add no backlog. */
 export const BACKLOG_FROM = "2026-11";
 
@@ -40,7 +40,7 @@ export type YearRow = {
 /**
  * The June–May year, month by month.
  *
- * Base = monthly base (192) + 4 for every brand added after launch that is
+ * Base = monthly base (now 0) + per-brand increment (now 0) for every brand added after launch that is
  * active that month, unless an admin set a base for that month.
  * The target covers total output on the floor: IP + Non-IP + Festive.
  * Target = base + the previous month's shortfall. A shortfall carries
