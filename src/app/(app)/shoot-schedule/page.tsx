@@ -4,6 +4,7 @@ import { AddShootForm, DOP_PEOPLE, RemoveShootButton, ShootBrandCell, ShootIpCel
 import { getShootsView } from "@/lib/queries";
 import { requireUser } from "@/lib/auth";
 import { currentMonthKey, monthKeyLabel, yearMonths, yearStartFor } from "@/lib/dates";
+import { isShootIp } from "@/lib/shootIps";
 
 export default async function ShootSchedulePage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
   const user = await requireUser();
@@ -17,9 +18,8 @@ export default async function ShootSchedulePage({ searchParams }: { searchParams
     .filter((c) => canEdit(c.id))
     .map((c) => ({ id: c.id, label: `${c.code} · ${c.leaderName}`, brands: c.brands.map((b) => ({ id: b.id, name: b.name })) }));
   const cohortById = new Map(cohorts.map((c) => [c.id, c]));
-  // Current content buckets only (old launch-era IP names sit at sortOrder >= 1000); a shoot that still
-  // uses an old name keeps it in its own row's dropdown.
-  const ipOptions = ips.filter((ip) => ip.sortOrder < 1000).map((ip) => ({ id: ip.id, name: ip.name }));
+  // Only the IPs that need a shoot; a shoot already on another IP keeps it in its own row's dropdown.
+  const ipOptions = ips.filter((ip) => ip.sortOrder < 1000 && isShootIp(ip.name)).map((ip) => ({ id: ip.id, name: ip.name }));
   const ipById = new Map(ips.map((ip) => [ip.id, { id: ip.id, name: ip.name }]));
   const ipOptionsFor = (ipId: string) => (ipOptions.some((o) => o.id === ipId) || !ipById.has(ipId) ? ipOptions : [ipById.get(ipId)!, ...ipOptions]);
 
