@@ -41,11 +41,17 @@ enum EntryKind {
   NON_IP
 }
 
-/// Where a calendar entry is in its life: planned, produced, posted.
+/// Where a calendar entry is in its life. Delivered = CTR or LIVE;
+/// REJECTED drops out of the plan.
 enum EntryStatus {
-  PENDING
-  DONE
+  /// Work in progress
+  WIP
+  /// Agency to revert
+  ATR
+  /// Client to revert
+  CTR
   LIVE
+  REJECTED
 }
 
 model Cohort {
@@ -137,8 +143,8 @@ model PersonAssignment {
 /// entries for a brand+IP+month *is* the target. REGULAR entries count
 /// toward the IP matrix (ipId set); FESTIVAL/NON_IP entries are the old
 /// Festive & Non-IP log, folded in here (festivalId or workLabel set
-/// instead). Achieved = count with status != PENDING; live = count with
-/// status = LIVE. postDate minus the admin's buffer setting is when
+/// instead). Achieved = count with status CTR or LIVE; live = count with
+/// status = LIVE; REJECTED entries are left out. postDate minus the admin's buffer setting is when
 /// production is due — that's what drives each IP CS's task list.
 model CalendarEntry {
   id          String      @id @default(cuid())
@@ -152,7 +158,9 @@ model CalendarEntry {
   format      PlanFormat?
   /// "YYYY-MM-DD" — the date this is meant to go live.
   postDate    String
-  status      EntryStatus @default(PENDING)
+  status      EntryStatus @default(WIP)
+  /// Free-text note anyone who works on the post can add.
+  remarks     String?
   createdById String?
   createdAt   DateTime    @default(now())
 

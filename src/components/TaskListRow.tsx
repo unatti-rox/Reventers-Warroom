@@ -1,10 +1,11 @@
-import { CalendarEntryControls } from "@/components/CalendarEntryControls";
+import { EntryStatusSelect, EntryRemarks } from "@/components/CalendarEntryControls";
 import type { EntryStatus } from "@/generated/prisma/enums";
 
 /** One task on an IP CS's computed to-do list: what to make, for which brand, and how urgent it is — nobody assigned this, the post date did. */
 export function TaskListRow({
   entryId,
   status,
+  remarks,
   brandName,
   cohortCode,
   title,
@@ -15,6 +16,7 @@ export function TaskListRow({
 }: {
   entryId: string;
   status: EntryStatus;
+  remarks: string;
   brandName: string;
   cohortCode: string;
   title: string;
@@ -37,7 +39,10 @@ export function TaskListRow({
       <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: urgencyColor }}>
         {urgencyLabel}
       </span>
-      <CalendarEntryControls entryId={entryId} status={status} removable={false} />
+      <EntryStatusSelect entryId={entryId} status={status} />
+      <div className="w-[200px] min-w-0 break-words">
+        <EntryRemarks entryId={entryId} remarks={remarks} />
+      </div>
     </div>
   );
 }

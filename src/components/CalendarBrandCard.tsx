@@ -1,5 +1,6 @@
 import { CollapsibleCard } from "@/components/CollapsibleCard";
-import { CalendarEntryControls, STATUS_LABEL, STATUS_COLOR } from "@/components/CalendarEntryControls";
+import { EntryStatusSelect, EntryRemarks, RemoveEntryButton } from "@/components/CalendarEntryControls";
+import { isDelivered, isPlanned } from "@/lib/entryStatus";
 import { AddCalendarEntryForm, FORMAT_LABEL } from "@/components/AddCalendarEntryForm";
 import { UploadCalendarForm } from "@/components/UploadCalendarForm";
 import type { CalendarEntryRow } from "@/lib/queries";
@@ -24,15 +25,17 @@ export function CalendarBrandCard({
   monthKey: string;
   defaultOpen?: boolean;
 }) {
-  const done = entries.filter((e) => e.status !== "PENDING").length;
+  const planned = entries.filter((e) => isPlanned(e.status));
+  const done = planned.filter((e) => isDelivered(e.status)).length;
 
   return (
-    <CollapsibleCard title={brandName} subtitle={subtitle} meta={`${done} / ${entries.length}`} defaultOpen={defaultOpen}>
+    <CollapsibleCard title={brandName} subtitle={subtitle} meta={`${done} / ${planned.length}`} defaultOpen={defaultOpen}>
       <div className="flex items-center gap-3 px-5 py-2 border-b text-[9px] font-bold uppercase tracking-wide" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
         <span className="flex-1">Post</span>
         <span className="w-20">Date</span>
-        <span className="w-16">Status</span>
-        <span className="text-right">Action</span>
+        <span className="w-[172px] shrink-0">Status</span>
+        <span className="w-[220px] shrink-0">Remarks</span>
+        <span className="w-4" />
       </div>
       {entries.map((e) => (
         <div key={e.id} className="flex items-center gap-3 px-5 py-2.5 border-b last:border-0 flex-wrap" style={{ borderColor: "var(--border)" }}>
@@ -43,11 +46,16 @@ export function CalendarBrandCard({
               {e.format && FORMAT_LABEL[e.format] ? ` · ${FORMAT_LABEL[e.format]}` : ""}
             </div>
           </div>
-          <div className="w-20 text-[11px] tabular-nums">{e.postDate}</div>
-          <div className="w-16 text-[10.5px] font-bold" style={{ color: STATUS_COLOR[e.status] }}>
-            {STATUS_LABEL[e.status]}
+          <div className="w-20 shrink-0 text-[11px] tabular-nums">{e.postDate}</div>
+          <div className="w-[172px] shrink-0">
+            <EntryStatusSelect entryId={e.id} status={e.status} />
           </div>
-          <CalendarEntryControls entryId={e.id} status={e.status} />
+          <div className="w-[220px] shrink-0 break-words">
+            <EntryRemarks entryId={e.id} remarks={e.remarks} />
+          </div>
+          <div className="w-4">
+            <RemoveEntryButton entryId={e.id} />
+          </div>
         </div>
       ))}
       {entries.length === 0 && (

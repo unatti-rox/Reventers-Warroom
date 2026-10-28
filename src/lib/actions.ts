@@ -168,40 +168,28 @@ export async function removeCalendarEntry(entryId: string) {
   });
 }
 
-/** Marks an entry produced (PENDING → DONE). */
-export async function markEntryDone(entryId: string) {
+/** Sets a post's status from the Log it dropdown: WIP, ATR, CTR, LIVE or REJECTED. */
+export async function setEntryStatus(entryId: string, status: EntryStatus) {
   return run(async () => {
     const user = await actionUser();
+    if (!Object.values(EntryStatus).includes(status)) refuse("Pick a status.");
     const entry = await prisma.calendarEntry.findUnique({ where: { id: entryId } });
     if (!entry) refuse("That entry is already gone.");
     await assertCanTouchEntry(user, entry.brandId, entry.ipId);
-    if (entry.status !== EntryStatus.PENDING) refuse("Already marked done.");
-    await prisma.calendarEntry.update({ where: { id: entryId }, data: { status: EntryStatus.DONE } });
+    await prisma.calendarEntry.update({ where: { id: entryId }, data: { status } });
   });
 }
 
-/** Marks an entry live (DONE or PENDING → LIVE). */
-export async function markEntryLive(entryId: string) {
+/** Saves the free-text remark on a post (empty clears it). */
+export async function setEntryRemarks(entryId: string, remarks: string) {
   return run(async () => {
     const user = await actionUser();
+    const text = String(remarks ?? "").trim();
+    if (text.length > 500) refuse("Keep remarks under 500 characters.");
     const entry = await prisma.calendarEntry.findUnique({ where: { id: entryId } });
     if (!entry) refuse("That entry is already gone.");
     await assertCanTouchEntry(user, entry.brandId, entry.ipId);
-    if (entry.status === EntryStatus.LIVE) refuse("Already live.");
-    await prisma.calendarEntry.update({ where: { id: entryId }, data: { status: EntryStatus.LIVE } });
-  });
-}
-
-/** Steps an entry's status back one notch (LIVE → DONE → PENDING) - for fixing an accidental tap. */
-export async function undoEntryStatus(entryId: string) {
-  return run(async () => {
-    const user = await actionUser();
-    const entry = await prisma.calendarEntry.findUnique({ where: { id: entryId } });
-    if (!entry) refuse("That entry is already gone.");
-    await assertCanTouchEntry(user, entry.brandId, entry.ipId);
-    if (entry.status === EntryStatus.PENDING) refuse("Nothing to undo.");
-    const prev = entry.status === EntryStatus.LIVE ? EntryStatus.DONE : EntryStatus.PENDING;
-    await prisma.calendarEntry.update({ where: { id: entryId }, data: { status: prev } });
+    await prisma.calendarEntry.update({ where: { id: entryId }, data: { remarks: text || null } });
   });
 }
 

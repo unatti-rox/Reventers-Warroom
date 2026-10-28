@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { PersonRole, EntryKind, EntryStatus, type PlanFormat } from "@/generated/prisma/enums";
 import { currentMonthKey, addDays } from "@/lib/dates";
+import { OPEN, isDelivered, isPlanned } from "@/lib/entryStatus";
 
 /** Brands that count in a given month (not archived before it). */
 function activeIn(monthKey: string) {
@@ -41,10 +42,11 @@ export function cohortLabel(c: { code: string; leaderName: string }) {
 
 type Summary = { target: number; achieved: number; live: number; pct: number };
 
-/** Target = how many entries were planned; achieved = planned pieces produced or live; live = posted. No numbers typed anywhere - this is pure counting. */
-function summarize(entries: { status: EntryStatus }[]): Summary {
+/** Target = how many entries are planned (rejected ones drop out); achieved = delivered (CTR or live); live = posted. No numbers typed anywhere - this is pure counting. */
+function summarize(all: { status: EntryStatus }[]): Summary {
+  const entries = all.filter((e) => isPlanned(e.status));
   const target = entries.length;
-  const achieved = entries.filter((e) => e.status !== EntryStatus.PENDING).length;
+  const achieved = entries.filter((e) => isDelivered(e.status)).length;
   const live = entries.filter((e) => e.status === EntryStatus.LIVE).length;
   return { target, achieved, live, pct: target ? Math.min(100, Math.round((achieved / target) * 100)) : 0 };
 }
@@ -143,6 +145,7 @@ export type CalendarEntryRow = {
   format: PlanFormat | null;
   postDate: string;
   status: EntryStatus;
+  remarks: string;
 };
 
 /**
@@ -181,6 +184,7 @@ export async function getCalendarCohortView(cohortIds: string[] | "all", monthKe
       format: e.format,
       postDate: e.postDate,
       status: e.status,
+      remarks: e.remarks ?? "",
     };
     const list = rowsByBrand.get(e.brandId) ?? [];
     list.push(row);
@@ -210,6 +214,7 @@ export type TaskListEntry = {
   postDate: string;
   dueDate: string;
   status: EntryStatus;
+  remarks: string;
 };
 
 /**
@@ -221,7 +226,7 @@ export async function getIpTaskList(ipIds: string[]) {
   if (ipIds.length === 0) return [];
   const bufferDays = await getCalendarBufferDays();
   const entries = await prisma.calendarEntry.findMany({
-    where: { ipId: { in: ipIds }, kind: EntryKind.REGULAR, status: { not: EntryStatus.LIVE } },
+    where: { ipId: { in: ipIds }, kind: EntryKind.REGULAR, status: { in: OPEN } },
     include: { brand: { include: { cohort: true } }, ip: true },
     orderBy: { postDate: "asc" },
   });
@@ -236,6 +241,7 @@ export async function getIpTaskList(ipIds: string[]) {
       postDate: e.postDate,
       dueDate: addDays(e.postDate, -bufferDays),
       status: e.status,
+      remarks: e.remarks ?? "",
     };
     const list = byIp.get(e.ipId!) ?? [];
     list.push(row);
@@ -280,8 +286,8 @@ export async function getBucketWeeklyLoad(monthKey: string): Promise<BucketWeekl
   const [bufferDays, ips, pending, monthEntries] = await Promise.all([
     getCalendarBufferDays(),
     prisma.ip.findMany({ where: { sortOrder: { lt: 1000 } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
-    prisma.calendarEntry.findMany({ where: { kind: EntryKind.REGULAR, status: { not: EntryStatus.LIVE } }, select: { ipId: true, postDate: true } }),
-    prisma.calendarEntry.findMany({ where: { kind: EntryKind.REGULAR, monthKey }, select: { ipId: true, status: true } }),
+    prisma.calendarEntry.findMany({ where: { kind: EntryKind.REGULAR, status: { in: OPEN } }, select: { ipId: true, postDate: true } }),
+    prisma.calendarEntry.findMany({ where: { kind: EntryKind.REGULAR, monthKey, status: { not: EntryStatus.REJECTED } }, select: { ipId: true, status: true } }),
   ]);
   return ips.map((ip) => {
     const weeks: [number, number, number, number] = [0, 0, 0, 0];
