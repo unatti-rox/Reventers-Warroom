@@ -41,14 +41,16 @@ enum EntryKind {
   NON_IP
 }
 
-/// Where a calendar entry is in its life. Delivered = CTR or LIVE;
-/// REJECTED drops out of the plan.
+/// Where a calendar entry is in its life: WIP, LIVE (delivered) or
+/// REJECTED (drops out of the plan). ATR and CTR are retired - no post
+/// uses them any more and Log it doesn't offer them - but stay in the
+/// type so older deployments sharing the database keep working.
 enum EntryStatus {
   /// Work in progress
   WIP
-  /// Agency to revert
+  /// Retired: agency to revert
   ATR
-  /// Client to revert
+  /// Retired: client to revert
   CTR
   LIVE
   REJECTED
@@ -143,8 +145,7 @@ model PersonAssignment {
 /// entries for a brand+IP+month *is* the target. REGULAR entries count
 /// toward the IP matrix (ipId set); FESTIVAL/NON_IP entries are the old
 /// Festive & Non-IP log, folded in here (festivalId or workLabel set
-/// instead). Achieved = count with status CTR or LIVE; live = count with
-/// status = LIVE; REJECTED entries are left out. postDate minus the admin's buffer setting is when
+/// instead). Achieved = live = count with status = LIVE; REJECTED entries are left out. postDate minus the admin's buffer setting is when
 /// production is due — that's what drives each IP CS's task list.
 model CalendarEntry {
   id          String      @id @default(cuid())

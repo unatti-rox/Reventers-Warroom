@@ -9,7 +9,6 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 export const FORMATS: PlanFormat[] = ["STORY", "REEL", "AV", "GIF"];
 export const FORMAT_LABEL: Record<PlanFormat, string> = { STORY: "Story", REEL: "Reel", AV: "AV", GIF: "GIF" };
 
-const NON_IP = "nonip";
 const FESTIVAL = "festival";
 const ipValue = (id: string) => `ip:${id}`;
 
@@ -33,7 +32,7 @@ export function AddCalendarEntryForm({
   const [pending, startTransition] = useTransition();
   const order = Array.from({ length: 12 }, (_, i) => ((defaultMonth - 1 + i) % 12) + 1);
 
-  const kind: EntryKind = bucket === NON_IP ? "NON_IP" : bucket === FESTIVAL ? "FESTIVAL" : "REGULAR";
+  const kind: EntryKind = bucket === FESTIVAL ? "FESTIVAL" : "REGULAR";
   const ipId = kind === "REGULAR" ? bucket.slice(3) : null;
 
   return (
@@ -79,7 +78,6 @@ export function AddCalendarEntryForm({
           </option>
         ))}
         <option value={FESTIVAL}>Festival</option>
-        <option value={NON_IP}>Non-IP work</option>
       </select>
       {kind === "FESTIVAL" && (
         <select value={festivalId} onChange={(e) => setFestivalId(e.target.value)} className="h-8 rounded-lg border px-2 text-[11px] min-w-[200px]" style={inputStyle} aria-label="Which festival">

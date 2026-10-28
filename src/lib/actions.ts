@@ -7,6 +7,7 @@ import { actionAdmin, actionUser, createSession, destroySession, getCurrentUser,
 import { hashPassword, temporaryPassword, verifyPassword } from "@/lib/password";
 import { currentMonthKey } from "@/lib/dates";
 import { parseCalendarImage, type ParsedEntry } from "@/lib/calendarAi";
+import { STATUS_OPTIONS } from "@/lib/entryStatus";
 import { AppRole, PersonRole, PlanFormat, EntryKind, EntryStatus } from "@/generated/prisma/enums";
 
 export type { ParsedEntry };
@@ -169,11 +170,11 @@ export async function removeCalendarEntry(entryId: string) {
   });
 }
 
-/** Sets a post's status from the Log it dropdown: WIP, ATR, CTR, LIVE or REJECTED. */
+/** Sets a post's status from the Log it dropdown: WIP, LIVE or REJECTED. */
 export async function setEntryStatus(entryId: string, status: EntryStatus) {
   return run(async () => {
     const user = await actionUser();
-    if (!Object.values(EntryStatus).includes(status)) refuse("Pick a status.");
+    if (!STATUS_OPTIONS.includes(status)) refuse("Pick a status.");
     const entry = await prisma.calendarEntry.findUnique({ where: { id: entryId } });
     if (!entry) refuse("That entry is already gone.");
     await assertCanTouchEntry(user, entry.brandId, entry.ipId);
